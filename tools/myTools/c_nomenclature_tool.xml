@@ -1,0 +1,22 @@
+<tool id="tool_id" name="C Nomenclature Tool" version="1.0">
+    <description>Analyze mutations in DNA sequences and predict potential amino acid changes.</description>
+
+    <!-- Command to execute the script -->
+    <command>python3 ${__tool_directory__}/c_nomenclature_tool.py $input1 $input2 $input3 $output1 </command>
+    <!-- Input parameters -->
+    <inputs>
+        <param name="input1" type="data" format="txt" label="cDNA Sequence" />
+        <param name="input2" type="data" format="txt" label="List of Mutation Positions in the Protein" />
+        <param name="input3" type="data" format="txt" label="List of Altered Amino Acids in the Protein" />
+    </inputs>
+
+    <!-- Output parameters -->
+    <outputs>
+        <data name="output1" format="txt" />
+    </outputs>
+
+    <!-- Other tool attributes -->
+    <requirements>
+        <requirement type="package" version="3.0">python</requirement>
+    </requirements>
+</tool>
