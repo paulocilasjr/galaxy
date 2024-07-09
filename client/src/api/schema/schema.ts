@@ -8,20 +8,6 @@ export interface paths {
         /** Returns returns an API key for authenticated user based on BaseAuth headers. */
         get: operations["get_api_key_api_authenticate_baseauth_get"];
     };
-    "/api/cloud/storage/get": {
-        /**
-         * Gets given objects from a given cloud-based bucket to a Galaxy history.
-         * @deprecated
-         */
-        post: operations["get_api_cloud_storage_get_post"];
-    };
-    "/api/cloud/storage/send": {
-        /**
-         * Sends given dataset(s) in a given history to a given cloud-based bucket.
-         * @deprecated
-         */
-        post: operations["send_api_cloud_storage_send_post"];
-    };
     "/api/configuration": {
         /**
          * Return an object containing exposable configuration settings
@@ -318,6 +304,28 @@ export interface paths {
         /** Download */
         get: operations["download_api_drs_download__object_id__get"];
     };
+    "/api/file_source_instances": {
+        /** Get a list of persisted file source instances defined by the requesting user. */
+        get: operations["file_sources__instances_index"];
+        /** Create a user-bound file source. */
+        post: operations["file_sources__create_instance"];
+    };
+    "/api/file_source_instances/test": {
+        /** Test payload for creating user-bound file source. */
+        post: operations["file_sources__test_new_instance_configuration"];
+    };
+    "/api/file_source_instances/{user_file_source_id}": {
+        /** Get a persisted user file source instance. */
+        get: operations["file_sources__instances_get"];
+        /** Update or upgrade user file source instance. */
+        put: operations["file_sources__instances_update"];
+        /** Purge user file source instance. */
+        delete: operations["file_sources__instances_purge"];
+    };
+    "/api/file_source_templates": {
+        /** Get a list of file source templates available to build user defined file sources from */
+        get: operations["file_sources__templates_index"];
+    };
     "/api/folders/{folder_id}/contents": {
         /**
          * Returns a list of a folder's contents (files and sub-folders) with additional metadata about the folder.
@@ -390,6 +398,8 @@ export interface paths {
          * Displays remote files available to the user. Please use /api/remote_files instead.
          * @deprecated
          * @description Lists all remote files available to the user from different sources.
+         *
+         * The total count of files and directories is returned in the 'total_matches' header.
          */
         get: operations["index_api_ftp_files_get"];
     };
@@ -1245,6 +1255,28 @@ export interface paths {
          */
         delete: operations["delete_user_notification_api_notifications__notification_id__delete"];
     };
+    "/api/object_store_instances": {
+        /** Get a list of persisted object store instances defined by the requesting user. */
+        get: operations["object_stores__instances_index"];
+        /** Create a user-bound object store. */
+        post: operations["object_stores__create_instance"];
+    };
+    "/api/object_store_instances/test": {
+        /** Test payload for creating user-bound object store. */
+        post: operations["object_stores__test_new_instance_configuration"];
+    };
+    "/api/object_store_instances/{user_object_store_id}": {
+        /** Get a persisted user object store instance. */
+        get: operations["object_stores__instances_get"];
+        /** Update or upgrade user object store instance. */
+        put: operations["object_stores__instances_update"];
+        /** Purge user object store instance. */
+        delete: operations["object_stores__instances_purge"];
+    };
+    "/api/object_store_templates": {
+        /** Get a list of object store templates available to build user defined object stores from */
+        get: operations["object_stores__templates_index"];
+    };
     "/api/object_stores": {
         /** Get a list of (currently only concrete) object stores configured with this Galaxy instance. */
         get: operations["index_api_object_stores_get"];
@@ -1409,6 +1441,8 @@ export interface paths {
         /**
          * Displays remote files available to the user.
          * @description Lists all remote files available to the user from different sources.
+         *
+         * The total count of files and directories is returned in the 'total_matches' header.
          */
         get: operations["index_api_remote_files_get"];
         /**
@@ -2452,7 +2486,7 @@ export interface components {
                       | "more_stable"
                       | "less_stable"
                   )
-                | ("cloud" | "quota" | "no_quota" | "restricted");
+                | ("cloud" | "quota" | "no_quota" | "restricted" | "user_defined");
         };
         /** BasicRoleModel */
         BasicRoleModel: {
@@ -2636,7 +2670,7 @@ export interface components {
              * Documentation
              * @description Documentation or extended description for this plugin.
              */
-            doc: string;
+            doc?: string | null;
             /**
              * ID
              * @description The `FilesSource` plugin identifier
@@ -2658,6 +2692,15 @@ export interface components {
              */
             requires_roles?: string | null;
             /**
+             * @description Features supported by this file source.
+             * @default {
+             *   "pagination": false,
+             *   "search": false,
+             *   "sorting": false
+             * }
+             */
+            supports?: components["schemas"]["FilesSourceSupports"];
+            /**
              * Type
              * @description The type of the plugin.
              */
@@ -2668,11 +2711,15 @@ export interface components {
              */
             uri_root: string;
             /**
+             * URL
+             * @description Optional URL that might be provided by some plugins to link to the remote source.
+             */
+            url?: string | null;
+            /**
              * Writeable
              * @description Whether this files source plugin allows write access.
              */
             writable: boolean;
-            [key: string]: unknown | undefined;
         };
         /** BulkOperationItemError */
         BulkOperationItemError: {
@@ -2748,85 +2795,6 @@ export interface components {
         CleanupStorageItemsRequest: {
             /** Item Ids */
             item_ids: string[];
-        };
-        /** CloudDatasets */
-        CloudDatasets: {
-            /**
-             * Authentication ID
-             * @description The ID of CloudAuthz to be used for authorizing access to the resource provider. You may get a list of the defined authorizations via `/api/cloud/authz`. Also, you can use `/api/cloud/authz/create` to define a new authorization.
-             * @example 0123456789ABCDEF
-             */
-            authz_id: string;
-            /**
-             * Bucket
-             * @description The name of a bucket to which data should be sent (e.g., a bucket name on AWS S3).
-             */
-            bucket: string;
-            /**
-             * Objects
-             * @description A list of dataset IDs belonging to the specified history that should be sent to the given bucket. If not provided, Galaxy sends all the datasets belonging the specified history.
-             */
-            dataset_ids?: string[] | null;
-            /**
-             * History ID
-             * @description The ID of history from which the object should be downloaded
-             * @example 0123456789ABCDEF
-             */
-            history_id: string;
-            /**
-             * Spaces to tabs
-             * @description A boolean value. If set to 'True', and an object with same name of the dataset to be sent already exist in the bucket, Galaxy replaces the existing object with the dataset to be sent. If set to 'False', Galaxy appends datetime to the dataset name to prevent overwriting an existing object.
-             * @default false
-             */
-            overwrite_existing?: boolean | null;
-        };
-        /** CloudDatasetsResponse */
-        CloudDatasetsResponse: {
-            /**
-             * Bucket
-             * @description The name of bucket to which the listed datasets are queued to be sent
-             */
-            bucket_name: string;
-            /**
-             * Failed datasets
-             * @description The datasets for which Galaxy failed to create (and queue) send job
-             */
-            failed_dataset_labels: string[];
-            /**
-             * Send datasets
-             * @description The datasets for which Galaxy succeeded to create (and queue) send job
-             */
-            sent_dataset_labels: string[];
-        };
-        /** CloudObjects */
-        CloudObjects: {
-            /**
-             * Authentication ID
-             * @description The ID of CloudAuthz to be used for authorizing access to the resource provider. You may get a list of the defined authorizations via `/api/cloud/authz`. Also, you can use `/api/cloud/authz/create` to define a new authorization.
-             * @example 0123456789ABCDEF
-             */
-            authz_id: string;
-            /**
-             * Bucket
-             * @description The name of a bucket from which data should be fetched from (e.g., a bucket name on AWS S3).
-             */
-            bucket: string;
-            /**
-             * History ID
-             * @description The ID of history to which the object should be received to.
-             * @example 0123456789ABCDEF
-             */
-            history_id: string;
-            /**
-             * Input arguments
-             * @description A summary of the input arguments, which is optional and will default to {}.
-             */
-            input_args?: components["schemas"]["InputArguments"] | null;
-            /**
-             * Objects
-             * @description A list of the names of objects to be fetched.
-             */
-            objects: string[];
         };
         /** CollectionElementIdentifier */
         CollectionElementIdentifier: {
@@ -3156,6 +3124,25 @@ export interface components {
             store_content_uri?: string | null;
             /** Store Dict */
             store_dict?: Record<string, never> | null;
+        };
+        /** CreateInstancePayload */
+        CreateInstancePayload: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name: string;
+            /** Secrets */
+            secrets: {
+                [key: string]: string | undefined;
+            };
+            /** Template Id */
+            template_id: string;
+            /** Template Version */
+            template_version: number;
+            /** Variables */
+            variables: {
+                [key: string]: (string | boolean | number) | undefined;
+            };
         };
         /** CreateInvocationsFromStorePayload */
         CreateInvocationsFromStorePayload: {
@@ -3555,7 +3542,10 @@ export interface components {
              */
             name: string;
         };
-        /** CustomBuildsCollection */
+        /**
+         * CustomBuildsCollection
+         * @description The custom builds associated with the user.
+         */
         CustomBuildsCollection: components["schemas"]["CustomBuildModel"][];
         /** CustomBuildsMetadataResponse */
         CustomBuildsMetadataResponse: {
@@ -3738,7 +3728,7 @@ export interface components {
              * Element Type
              * @description The type of the element. Used to interpret the `object` field.
              */
-            element_type: components["schemas"]["DCEType"];
+            element_type?: components["schemas"]["DCEType"] | null;
             /**
              * Dataset Collection Element ID
              * @example 0123456789ABCDEF
@@ -3755,10 +3745,11 @@ export interface components {
              * Object
              * @description The element's specific data depending on the value of `element_type`.
              */
-            object:
+            object?:
                 | components["schemas"]["HDAObject"]
                 | components["schemas"]["HDADetailed"]
-                | components["schemas"]["DCObject"];
+                | components["schemas"]["DCObject"]
+                | null;
         };
         /**
          * DCEType
@@ -4121,47 +4112,6 @@ export interface components {
              */
             sources: Record<string, never>[];
         };
-        /** DatasetSummary */
-        DatasetSummary: {
-            /**
-             * Create Time
-             * @description The time and date this item was created.
-             */
-            create_time: string | null;
-            /** Deleted */
-            deleted: boolean;
-            /** File Size */
-            file_size: number;
-            /**
-             * Id
-             * @example 0123456789ABCDEF
-             */
-            id: string;
-            /** Purgable */
-            purgable: boolean;
-            /** Purged */
-            purged: boolean;
-            /**
-             * State
-             * @description The current state of this dataset.
-             */
-            state: components["schemas"]["DatasetState"];
-            /** Total Size */
-            total_size: number;
-            /**
-             * Update Time
-             * @description The last time and date this item was updated.
-             */
-            update_time: string | null;
-            /**
-             * UUID
-             * Format: uuid4
-             * @description Universal unique identifier for this dataset.
-             */
-            uuid: string;
-        };
-        /** DatasetSummaryList */
-        DatasetSummaryList: components["schemas"]["DatasetSummary"][];
         /** DatasetTextContentDetails */
         DatasetTextContentDetails: {
             /**
@@ -5195,6 +5145,43 @@ export interface components {
              */
             update_time: string;
         };
+        /** FileSourceTemplateSummaries */
+        FileSourceTemplateSummaries: components["schemas"]["FileSourceTemplateSummary"][];
+        /** FileSourceTemplateSummary */
+        FileSourceTemplateSummary: {
+            /** Description */
+            description: string | null;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Secrets */
+            secrets?: components["schemas"]["TemplateSecret"][] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "ftp" | "posix" | "s3fs" | "azure";
+            /** Variables */
+            variables?:
+                | (
+                      | components["schemas"]["TemplateVariableString"]
+                      | components["schemas"]["TemplateVariableInteger"]
+                      | components["schemas"]["TemplateVariablePathComponent"]
+                      | components["schemas"]["TemplateVariableBoolean"]
+                  )[]
+                | null;
+            /**
+             * Version
+             * @default 0
+             */
+            version?: number;
+        };
         /** FilesSourcePlugin */
         FilesSourcePlugin: {
             /**
@@ -5206,7 +5193,7 @@ export interface components {
              * Documentation
              * @description Documentation or extended description for this plugin.
              */
-            doc: string;
+            doc?: string | null;
             /**
              * ID
              * @description The `FilesSource` plugin identifier
@@ -5228,10 +5215,24 @@ export interface components {
              */
             requires_roles?: string | null;
             /**
+             * @description Features supported by this file source.
+             * @default {
+             *   "pagination": false,
+             *   "search": false,
+             *   "sorting": false
+             * }
+             */
+            supports?: components["schemas"]["FilesSourceSupports"];
+            /**
              * Type
              * @description The type of the plugin.
              */
             type: string;
+            /**
+             * URL
+             * @description Optional URL that might be provided by some plugins to link to the remote source.
+             */
+            url?: string | null;
             /**
              * Writeable
              * @description Whether this files source plugin allows write access.
@@ -5246,6 +5247,27 @@ export interface components {
             | components["schemas"]["BrowsableFilesSourcePlugin"]
             | components["schemas"]["FilesSourcePlugin"]
         )[];
+        /** FilesSourceSupports */
+        FilesSourceSupports: {
+            /**
+             * Pagination
+             * @description Whether this file source supports server-side pagination.
+             * @default false
+             */
+            pagination?: boolean;
+            /**
+             * Search
+             * @description Whether this file source supports server-side search.
+             * @default false
+             */
+            search?: boolean;
+            /**
+             * Sorting
+             * @description Whether this file source supports server-side sorting.
+             * @default false
+             */
+            sorting?: boolean;
+        };
         /** FillStepDefaultsAction */
         FillStepDefaultsAction: {
             /**
@@ -5489,6 +5511,15 @@ export interface components {
              * @description The relative URL to access this item.
              */
             url: string;
+        };
+        /** GroupUpdatePayload */
+        GroupUpdatePayload: {
+            /** name of the group */
+            name?: string | null;
+            /** role IDs */
+            role_ids?: string[] | null;
+            /** user IDs */
+            user_ids?: string[] | null;
         };
         /** GroupUserListResponse */
         GroupUserListResponse: components["schemas"]["GroupUserResponse"][];
@@ -6010,10 +6041,95 @@ export interface components {
             visible: boolean;
         };
         /**
+         * HDAInaccessible
+         * @description History Dataset Association information when the user can not access it.
+         */
+        HDAInaccessible: {
+            /**
+             * Accessible
+             * @constant
+             * @enum {boolean}
+             */
+            accessible: false;
+            /** Copied From Ldda Id */
+            copied_from_ldda_id?: string | null;
+            /**
+             * Create Time
+             * @description The time and date this item was created.
+             */
+            create_time: string | null;
+            /**
+             * Deleted
+             * @description Whether this item is marked as deleted.
+             */
+            deleted: boolean;
+            /**
+             * HID
+             * @description The index position of this item in the History.
+             */
+            hid: number;
+            /**
+             * History Content Type
+             * @description This is always `dataset` for datasets.
+             * @constant
+             * @enum {string}
+             */
+            history_content_type: "dataset";
+            /**
+             * History ID
+             * @example 0123456789ABCDEF
+             */
+            history_id: string;
+            /**
+             * Id
+             * @example 0123456789ABCDEF
+             */
+            id: string;
+            /**
+             * Name
+             * @description The name of the item.
+             */
+            name: string | null;
+            /**
+             * State
+             * @description The current state of this dataset.
+             */
+            state: components["schemas"]["DatasetState"];
+            tags: components["schemas"]["TagCollection"];
+            /**
+             * Type
+             * @description The type of this item.
+             */
+            type: string;
+            /**
+             * Type - ID
+             * @description The type and the encoded ID of this item. Used for caching.
+             */
+            type_id?: string | null;
+            /**
+             * Update Time
+             * @description The last time and date this item was updated.
+             */
+            update_time: string | null;
+            /**
+             * URL
+             * @deprecated
+             * @description The relative URL to access this item.
+             */
+            url: string;
+            /**
+             * Visible
+             * @description Whether this item is visible or hidden to the user by default.
+             */
+            visible: boolean;
+        };
+        /**
          * HDAObject
          * @description History Dataset Association Object
          */
         HDAObject: {
+            /** Accessible */
+            accessible?: boolean | null;
             /** Copied From Ldda Id */
             copied_from_ldda_id?: string | null;
             /**
@@ -6039,6 +6155,8 @@ export interface components {
              * @enum {string}
              */
             model_class: "HistoryDatasetAssociation";
+            /** Purged */
+            purged: boolean;
             /**
              * State
              * @description The current state of this dataset.
@@ -6946,6 +7064,7 @@ export interface components {
             | components["schemas"]["HDACustom"]
             | components["schemas"]["HDADetailed"]
             | components["schemas"]["HDASummary"]
+            | components["schemas"]["HDAInaccessible"]
             | components["schemas"]["HDCADetailed"]
             | components["schemas"]["HDCASummary"]
         )[];
@@ -6962,6 +7081,7 @@ export interface components {
                 | components["schemas"]["HDACustom"]
                 | components["schemas"]["HDADetailed"]
                 | components["schemas"]["HDASummary"]
+                | components["schemas"]["HDAInaccessible"]
                 | components["schemas"]["HDCADetailed"]
                 | components["schemas"]["HDCASummary"]
             )[];
@@ -7263,33 +7383,6 @@ export interface components {
              * @description URI to fetch tool data bundle from (file:// URIs are fine because this is an admin-only operation)
              */
             uri: string;
-        };
-        /** InputArguments */
-        InputArguments: {
-            /**
-             * Database Key
-             * @description Sets the database key of the objects being fetched to Galaxy.
-             * @default ?
-             */
-            dbkey?: string | null;
-            /**
-             * File Type
-             * @description Sets the Galaxy datatype (e.g., `bam`) for the objects being fetched to Galaxy. See the following link for a complete list of Galaxy data types: https://galaxyproject.org/learn/datatypes/.
-             * @default auto
-             */
-            file_type?: string | null;
-            /**
-             * Spaces to tabs
-             * @description A boolean value ('true' or 'false') that sets if spaces should be converted to tab in the objects being fetched to Galaxy. Applicable only if `to_posix_lines` is True
-             * @default false
-             */
-            space_to_tab?: boolean | null;
-            /**
-             * POSIX line endings
-             * @description A boolean value ('true' or 'false'); if 'Yes', converts universal line endings to POSIX line endings. Set to 'False' if you upload a gzip, bz2 or zip archive containing a binary file.
-             * @default Yes
-             */
-            to_posix_lines?: "Yes" | boolean | null;
         };
         /** InputDataCollectionStep */
         InputDataCollectionStep: {
@@ -7959,6 +8052,11 @@ export interface components {
              * @example 0123456789ABCDEF
              */
             id: string;
+            /**
+             * Implicit Collection Jobs ID
+             * @description The implicit collection job ID associated with the workflow invocation step.
+             */
+            implicit_collection_jobs_id?: string | null;
             /** Job Id */
             job_id: string | null;
             /**
@@ -8045,7 +8143,7 @@ export interface components {
         InvocationStepJobsResponseCollectionJobsModel: {
             /**
              * ID
-             * @description The encoded ID of the workflow invocation.
+             * @description The encoded ID of the collection job.
              * @example 0123456789ABCDEF
              */
             id: string;
@@ -8072,7 +8170,7 @@ export interface components {
         InvocationStepJobsResponseJobModel: {
             /**
              * ID
-             * @description The encoded ID of the workflow invocation.
+             * @description The encoded ID of the job.
              * @example 0123456789ABCDEF
              */
             id: string;
@@ -8307,6 +8405,11 @@ export interface components {
              * @default false
              */
             use_cached_job?: boolean | null;
+            /**
+             * Version
+             * @description The version of the workflow to invoke.
+             */
+            version?: number | null;
         };
         /**
          * ItemTagsCreatePayload
@@ -9380,11 +9483,13 @@ export interface components {
         /**
          * ListJstreeResponse
          * @deprecated
+         * @description List of files in Jstree format.
          * @default []
          */
         ListJstreeResponse: Record<string, never>[];
         /**
          * ListUriResponse
+         * @description List of directories and files.
          * @default []
          */
         ListUriResponse: (components["schemas"]["RemoteFile"] | components["schemas"]["RemoteDirectory"])[];
@@ -9874,6 +9979,45 @@ export interface components {
              */
             up_to_date: boolean;
         };
+        /** ObjectStoreTemplateSummaries */
+        ObjectStoreTemplateSummaries: components["schemas"]["ObjectStoreTemplateSummary"][];
+        /** ObjectStoreTemplateSummary */
+        ObjectStoreTemplateSummary: {
+            /** Badges */
+            badges: components["schemas"]["BadgeDict"][];
+            /** Description */
+            description: string | null;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden?: boolean;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string | null;
+            /** Secrets */
+            secrets?: components["schemas"]["TemplateSecret"][] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "aws_s3" | "azure_blob" | "boto3" | "disk" | "generic_s3";
+            /** Variables */
+            variables?:
+                | (
+                      | components["schemas"]["TemplateVariableString"]
+                      | components["schemas"]["TemplateVariableInteger"]
+                      | components["schemas"]["TemplateVariablePathComponent"]
+                      | components["schemas"]["TemplateVariableBoolean"]
+                  )[]
+                | null;
+            /**
+             * Version
+             * @default 0
+             */
+            version?: number;
+        };
         /** OutputReferenceByLabel */
         OutputReferenceByLabel: {
             /**
@@ -10304,12 +10448,28 @@ export interface components {
          * @enum {string}
          */
         PersonalNotificationCategory: "message" | "new_shared_item";
+        /** PluginAspectStatus */
+        PluginAspectStatus: {
+            /** Message */
+            message: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ok" | "not_ok" | "unknown";
+        };
         /**
          * PluginKind
          * @description Enum to distinguish between different kinds or categories of plugins.
          * @enum {string}
          */
         PluginKind: "rfs" | "drs" | "rdm" | "stock";
+        /** PluginStatus */
+        PluginStatus: {
+            connection?: components["schemas"]["PluginAspectStatus"] | null;
+            template_definition: components["schemas"]["PluginAspectStatus"];
+            template_settings?: components["schemas"]["PluginAspectStatus"] | null;
+        };
         /** Position */
         Position: {
             /** Left */
@@ -11750,6 +11910,92 @@ export interface components {
          * @enum {string}
          */
         TaskState: "PENDING" | "STARTED" | "RETRY" | "FAILURE" | "SUCCESS";
+        /** TemplateSecret */
+        TemplateSecret: {
+            /** Help */
+            help: string | null;
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
+        };
+        /** TemplateVariableBoolean */
+        TemplateVariableBoolean: {
+            /**
+             * Default
+             * @default false
+             */
+            default?: boolean;
+            /** Help */
+            help: string | null;
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @constant
+             * @enum {string}
+             */
+            type: "boolean";
+        };
+        /** TemplateVariableInteger */
+        TemplateVariableInteger: {
+            /**
+             * Default
+             * @default 0
+             */
+            default?: number;
+            /** Help */
+            help: string | null;
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @constant
+             * @enum {string}
+             */
+            type: "integer";
+        };
+        /** TemplateVariablePathComponent */
+        TemplateVariablePathComponent: {
+            /** Default */
+            default?: string | null;
+            /** Help */
+            help: string | null;
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @constant
+             * @enum {string}
+             */
+            type: "path_component";
+        };
+        /** TemplateVariableString */
+        TemplateVariableString: {
+            /**
+             * Default
+             * @default
+             */
+            default?: string;
+            /** Help */
+            help: string | null;
+            /** Label */
+            label?: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Type
+             * @constant
+             * @enum {string}
+             */
+            type: "string";
+        };
         /** ToolDataDetails */
         ToolDataDetails: {
             /**
@@ -12092,6 +12338,28 @@ export interface components {
             visible?: boolean | null;
             [key: string]: unknown | undefined;
         };
+        /** UpdateInstancePayload */
+        UpdateInstancePayload: {
+            /** Active */
+            active?: boolean | null;
+            /** Description */
+            description?: string | null;
+            /** Hidden */
+            hidden?: boolean | null;
+            /** Name */
+            name?: string | null;
+            /** Variables */
+            variables?: {
+                [key: string]: (string | boolean | number) | undefined;
+            } | null;
+        };
+        /** UpdateInstanceSecretPayload */
+        UpdateInstanceSecretPayload: {
+            /** Secret Name */
+            secret_name: string;
+            /** Secret Value */
+            secret_value: string;
+        };
         /** UpdateLibraryFolderPayload */
         UpdateLibraryFolderPayload: {
             /**
@@ -12273,6 +12541,19 @@ export interface components {
              */
             action_type: "upgrade_all_steps";
         };
+        /** UpgradeInstancePayload */
+        UpgradeInstancePayload: {
+            /** Secrets */
+            secrets: {
+                [key: string]: string | undefined;
+            };
+            /** Template Version */
+            template_version: number;
+            /** Variables */
+            variables: {
+                [key: string]: (string | boolean | number) | undefined;
+            };
+        };
         /** UpgradeSubworkflowAction */
         UpgradeSubworkflowAction: {
             /**
@@ -12374,6 +12655,45 @@ export interface components {
              */
             enabled: boolean;
         };
+        /** UserConcreteObjectStoreModel */
+        UserConcreteObjectStoreModel: {
+            /** Active */
+            active: boolean;
+            /** Badges */
+            badges: components["schemas"]["BadgeDict"][];
+            /** Description */
+            description?: string | null;
+            /** Device */
+            device?: string | null;
+            /** Hidden */
+            hidden: boolean;
+            /** Name */
+            name?: string | null;
+            /** Object Store Id */
+            object_store_id?: string | null;
+            /** Private */
+            private: boolean;
+            /** Purged */
+            purged: boolean;
+            quota: components["schemas"]["QuotaModel"];
+            /** Secrets */
+            secrets: string[];
+            /** Template Id */
+            template_id: string;
+            /** Template Version */
+            template_version: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "aws_s3" | "azure_blob" | "boto3" | "disk" | "generic_s3";
+            /** Uuid */
+            uuid: string;
+            /** Variables */
+            variables: {
+                [key: string]: (string | boolean | number) | undefined;
+            } | null;
+        };
         /** UserCreationPayload */
         UserCreationPayload: {
             /**
@@ -12396,9 +12716,11 @@ export interface components {
         UserDeletionPayload: {
             /**
              * Purge user
-             * @description Purge the user
+             * @deprecated
+             * @description Purge the user. Deprecated, please use the `purge` query parameter instead.
+             * @default false
              */
-            purge: boolean;
+            purge?: boolean;
         };
         /** UserEmail */
         UserEmail: {
@@ -12413,6 +12735,38 @@ export interface components {
              * @example 0123456789ABCDEF
              */
             id: string;
+        };
+        /** UserFileSourceModel */
+        UserFileSourceModel: {
+            /** Active */
+            active: boolean;
+            /** Description */
+            description: string | null;
+            /** Hidden */
+            hidden: boolean;
+            /** Name */
+            name: string;
+            /** Purged */
+            purged: boolean;
+            /** Secrets */
+            secrets: string[];
+            /** Template Id */
+            template_id: string;
+            /** Template Version */
+            template_version: number;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "ftp" | "posix" | "s3fs" | "azure";
+            /** Uri Root */
+            uri_root: string;
+            /** Uuid */
+            uuid: string;
+            /** Variables */
+            variables: {
+                [key: string]: (string | boolean | number) | undefined;
+            } | null;
         };
         /**
          * UserModel
@@ -13080,68 +13434,6 @@ export interface operations {
             };
         };
     };
-    get_api_cloud_storage_get_post: {
-        /**
-         * Gets given objects from a given cloud-based bucket to a Galaxy history.
-         * @deprecated
-         */
-        parameters?: {
-            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
-            header?: {
-                "run-as"?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CloudObjects"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                content: {
-                    "application/json": components["schemas"]["DatasetSummaryList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    send_api_cloud_storage_send_post: {
-        /**
-         * Sends given dataset(s) in a given history to a given cloud-based bucket.
-         * @deprecated
-         */
-        parameters?: {
-            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
-            header?: {
-                "run-as"?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CloudDatasets"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                content: {
-                    "application/json": components["schemas"]["CloudDatasetsResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     index_api_configuration_get: {
         /**
          * Return an object containing exposable configuration settings
@@ -13638,6 +13930,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"]
                     )[];
@@ -13760,6 +14053,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"];
                 };
@@ -13928,7 +14222,8 @@ export interface operations {
                     "application/json":
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
-                        | components["schemas"]["HDASummary"];
+                        | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"];
                 };
             };
             /** @description Validation Error */
@@ -14603,6 +14898,193 @@ export interface operations {
             };
         };
     };
+    file_sources__instances_index: {
+        /** Get a list of persisted file source instances defined by the requesting user. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserFileSourceModel"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__create_instance: {
+        /** Create a user-bound file source. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserFileSourceModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__test_new_instance_configuration: {
+        /** Test payload for creating user-bound file source. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["PluginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__instances_get: {
+        /** Get a persisted user file source instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID index for a persisted UserFileSourceStore object. */
+            path: {
+                user_file_source_id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserFileSourceModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__instances_update: {
+        /** Update or upgrade user file source instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID index for a persisted UserFileSourceStore object. */
+            path: {
+                user_file_source_id: string;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json":
+                    | components["schemas"]["UpdateInstanceSecretPayload"]
+                    | components["schemas"]["UpgradeInstancePayload"]
+                    | components["schemas"]["UpdateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserFileSourceModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__instances_purge: {
+        /** Purge user file source instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID index for a persisted UserFileSourceStore object. */
+            path: {
+                user_file_source_id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: never;
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    file_sources__templates_index: {
+        /** Get a list of file source templates available to build user defined file sources from */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        responses: {
+            /** @description A list of the configured file source templates. */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["FileSourceTemplateSummaries"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     index_api_folders__folder_id__contents_get: {
         /**
          * Returns a list of a folder's contents (files and sub-folders) with additional metadata about the folder.
@@ -14997,6 +15479,8 @@ export interface operations {
          * Displays remote files available to the user. Please use /api/remote_files instead.
          * @deprecated
          * @description Lists all remote files available to the user from different sources.
+         *
+         * The total count of files and directories is returned in the 'total_matches' header.
          */
         parameters?: {
             /** @description The source to load datasets from. Possible values: ftpdir, userdir, importdir */
@@ -15004,12 +15488,20 @@ export interface operations {
             /** @description Whether to recursively lists all sub-directories. This will be `True` by default depending on the `target`. */
             /** @description (This only applies when `format` is `jstree`) The value can be either `folders` or `files` and it will disable the corresponding nodes of the tree. */
             /** @description Whether the query is made with the intention of writing to the source. If set to True, only entries that can be written to will be returned. */
+            /** @description Maximum number of entries to return. */
+            /** @description Number of entries to skip. */
+            /** @description Search query to filter entries by. The syntax could be different depending on the target source. */
+            /** @description Sort the entries by the specified field. */
             query?: {
                 target?: string;
                 format?: components["schemas"]["RemoteFilesFormat"] | null;
                 recursive?: boolean | null;
                 disable?: components["schemas"]["RemoteFilesDisableMode"] | null;
                 writeable?: boolean | null;
+                limit?: number | null;
+                offset?: number | null;
+                query?: string | null;
+                sort_by?: string | null;
             };
             /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
             header?: {
@@ -15263,7 +15755,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GroupCreatePayload"];
+                "application/json": components["schemas"]["GroupUpdatePayload"];
             };
         };
         responses: {
@@ -16680,12 +17172,14 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"]
                         | (
                               | components["schemas"]["HDACustom"]
                               | components["schemas"]["HDADetailed"]
                               | components["schemas"]["HDASummary"]
+                              | components["schemas"]["HDAInaccessible"]
                               | components["schemas"]["HDCADetailed"]
                               | components["schemas"]["HDCASummary"]
                           )[];
@@ -17269,6 +17763,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"];
                 };
@@ -17320,6 +17815,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"];
                 };
@@ -17552,12 +18048,14 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"]
                         | (
                               | components["schemas"]["HDACustom"]
                               | components["schemas"]["HDADetailed"]
                               | components["schemas"]["HDASummary"]
+                              | components["schemas"]["HDAInaccessible"]
                               | components["schemas"]["HDCADetailed"]
                               | components["schemas"]["HDCASummary"]
                           )[];
@@ -17608,6 +18106,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"];
                 };
@@ -17658,6 +18157,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"];
                 };
@@ -17889,6 +18389,7 @@ export interface operations {
                         | components["schemas"]["HDACustom"]
                         | components["schemas"]["HDADetailed"]
                         | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
                         | components["schemas"]["HDCADetailed"]
                         | components["schemas"]["HDCASummary"]
                     )[];
@@ -19392,7 +19893,7 @@ export interface operations {
          * @description Allows remote job running mechanisms to get a fresh OIDC token that can be used on remote side to authorize user. It is not meant to represent part of Galaxy's stable, user facing API
          */
         parameters: {
-            /** @description A key used to authenticate this request as acting onbehalf or a job runner for the specified job */
+            /** @description A key used to authenticate this request as acting on behalf or a job runner for the specified job */
             /** @description OIDC provider name */
             query: {
                 job_key: string;
@@ -20321,6 +20822,193 @@ export interface operations {
             };
         };
     };
+    object_stores__instances_index: {
+        /** Get a list of persisted object store instances defined by the requesting user. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserConcreteObjectStoreModel"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__create_instance: {
+        /** Create a user-bound object store. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserConcreteObjectStoreModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__test_new_instance_configuration: {
+        /** Test payload for creating user-bound object store. */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["PluginStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__instances_get: {
+        /** Get a persisted user object store instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID used to identify a persisted UserObjectStore object. */
+            path: {
+                user_object_store_id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserConcreteObjectStoreModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__instances_update: {
+        /** Update or upgrade user object store instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID used to identify a persisted UserObjectStore object. */
+            path: {
+                user_object_store_id: string;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json":
+                    | components["schemas"]["UpdateInstanceSecretPayload"]
+                    | components["schemas"]["UpgradeInstancePayload"]
+                    | components["schemas"]["UpdateInstancePayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["UserConcreteObjectStoreModel"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__instances_purge: {
+        /** Purge user object store instance. */
+        parameters: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+            /** @description The UUID used to identify a persisted UserObjectStore object. */
+            path: {
+                user_object_store_id: string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: never;
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    object_stores__templates_index: {
+        /** Get a list of object store templates available to build user defined object stores from */
+        parameters?: {
+            /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+            header?: {
+                "run-as"?: string | null;
+            };
+        };
+        responses: {
+            /** @description A list of the configured object store templates. */
+            200: {
+                content: {
+                    "application/json": components["schemas"]["ObjectStoreTemplateSummaries"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     index_api_object_stores_get: {
         /** Get a list of (currently only concrete) object stores configured with this Galaxy instance. */
         parameters?: {
@@ -20337,7 +21025,10 @@ export interface operations {
             /** @description A list of the configured object stores. */
             200: {
                 content: {
-                    "application/json": components["schemas"]["ConcreteObjectStoreModel"][];
+                    "application/json": (
+                        | components["schemas"]["ConcreteObjectStoreModel"]
+                        | components["schemas"]["UserConcreteObjectStoreModel"]
+                    )[];
                 };
             };
             /** @description Validation Error */
@@ -21123,6 +21814,8 @@ export interface operations {
         /**
          * Displays remote files available to the user.
          * @description Lists all remote files available to the user from different sources.
+         *
+         * The total count of files and directories is returned in the 'total_matches' header.
          */
         parameters?: {
             /** @description The source to load datasets from. Possible values: ftpdir, userdir, importdir */
@@ -21130,12 +21823,20 @@ export interface operations {
             /** @description Whether to recursively lists all sub-directories. This will be `True` by default depending on the `target`. */
             /** @description (This only applies when `format` is `jstree`) The value can be either `folders` or `files` and it will disable the corresponding nodes of the tree. */
             /** @description Whether the query is made with the intention of writing to the source. If set to True, only entries that can be written to will be returned. */
+            /** @description Maximum number of entries to return. */
+            /** @description Number of entries to skip. */
+            /** @description Search query to filter entries by. The syntax could be different depending on the target source. */
+            /** @description Sort the entries by the specified field. */
             query?: {
                 target?: string;
                 format?: components["schemas"]["RemoteFilesFormat"] | null;
                 recursive?: boolean | null;
                 disable?: components["schemas"]["RemoteFilesDisableMode"] | null;
                 writeable?: boolean | null;
+                limit?: number | null;
+                offset?: number | null;
+                query?: string | null;
+                sort_by?: string | null;
             };
             /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
             header?: {
@@ -22370,6 +23071,10 @@ export interface operations {
     delete_user_api_users__user_id__delete: {
         /** Delete a user. Only admins can delete others or purge users. */
         parameters: {
+            /** @description Whether to definitely remove this user. Only deleted users can be purged. */
+            query?: {
+                purge?: boolean;
+            };
             /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
             header?: {
                 "run-as"?: string | null;

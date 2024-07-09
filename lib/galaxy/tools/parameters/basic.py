@@ -25,7 +25,7 @@ from packaging.version import Version
 from webob.compat import cgi_FieldStorage
 
 from galaxy import util
-from galaxy.files import ProvidesUserFileSourcesUserContext
+from galaxy.files import ProvidesFileSourcesUserContext
 from galaxy.managers.dbkeys import read_dbnames
 from galaxy.model import (
     cached_id,
@@ -2053,7 +2053,8 @@ def src_id_to_item(
         item = sa_session.get(src_to_class[value["src"]], decoded_id)
     except KeyError:
         raise ValueError(f"Unknown input source {value['src']} passed to job submission API.")
-    assert item
+    if not item:
+        raise ValueError("Invalid input id passed to job submission API.")
     item.extra_params = {k: v for k, v in value.items() if k not in ("src", "id")}
     return item
 
@@ -2517,6 +2518,7 @@ class DataCollectionToolParameter(BaseDataToolParameter):
         # create dictionary and fill default parameters
         other_values = other_values or {}
         d = super().to_dict(trans)
+        d["collection_types"] = self.collection_types
         d["extensions"] = self.extensions
         d["multiple"] = self.multiple
         d["options"] = {"hda": [], "hdca": [], "dce": []}
@@ -2633,7 +2635,7 @@ class DirectoryUriToolParameter(SimpleTextToolParameter):
         file_source = file_source_path.file_source
         if file_source is None:
             raise ParameterValueError(f"'{value}' is not a valid file source uri.", self.name)
-        user_context = ProvidesUserFileSourcesUserContext(trans)
+        user_context = ProvidesFileSourcesUserContext(trans)
         user_has_access = file_source.user_has_access(user_context)
         if not user_has_access:
             raise ParameterValueError(f"The user cannot access {value}.", self.name)
@@ -2681,7 +2683,9 @@ class RulesListToolParameter(BaseJsonToolParameter):
 
 # Code from CWL branch to massage in order to be shared across tools and workflows,
 # and for CWL artifacts as well as Galaxy ones.
-def raw_to_galaxy(app: "MinimalApp", history: "History", as_dict_value: Dict[str, Any]) -> "HistoryItem":
+def raw_to_galaxy(
+    app: "MinimalApp", history: "History", as_dict_value: Dict[str, Any], commit: bool = True
+) -> "HistoryItem":
     object_class = as_dict_value["class"]
     if object_class == "File":
         # TODO: relative_to = "/"
@@ -2728,7 +2732,8 @@ def raw_to_galaxy(app: "MinimalApp", history: "History", as_dict_value: Dict[str
         app.model.session.add(primary_data)
         history.stage_addition(primary_data)
         history.add_pending_items()
-        app.model.session.flush()
+        if commit:
+            app.model.session.commit()
         return primary_data
     else:
         name = as_dict_value.get("name")
@@ -2740,6 +2745,7 @@ def raw_to_galaxy(app: "MinimalApp", history: "History", as_dict_value: Dict[str
             name=name,
             collection=collection,
         )
+        app.model.session.add(hdca)
 
         def write_elements_to_collection(has_elements, collection_builder):
             element_dicts = has_elements.get("elements")
@@ -2747,7 +2753,8 @@ def raw_to_galaxy(app: "MinimalApp", history: "History", as_dict_value: Dict[str
                 element_class = element_dict["class"]
                 identifier = element_dict["identifier"]
                 if element_class == "File":
-                    hda = raw_to_galaxy(app, history, element_dict)
+                    # Don't commit for inner elements
+                    hda = raw_to_galaxy(app, history, element_dict, commit=False)
                     collection_builder.add_dataset(identifier, hda)
                 else:
                     subcollection_builder = collection_builder.get_level(identifier)
@@ -2756,8 +2763,10 @@ def raw_to_galaxy(app: "MinimalApp", history: "History", as_dict_value: Dict[str
         collection_builder = builder.BoundCollectionBuilder(collection)
         write_elements_to_collection(as_dict_value, collection_builder)
         collection_builder.populate()
-        app.model.session.add(hdca)
-        app.model.session.flush()
+        history.stage_addition(hdca)
+        history.add_pending_items()
+        if commit:
+            app.model.session.commit()
         return hdca
 
 
