@@ -147,6 +147,7 @@ from galaxy.tools.cache import ToolCache
 from galaxy.tools.data import ToolDataTableManager
 from galaxy.tools.data_manager.manager import DataManagers
 from galaxy.tools.error_reports import ErrorReports
+from galaxy.tools.evaluation import ToolTemplatingException
 from galaxy.tools.search import ToolBoxSearch
 from galaxy.tools.special_tools import load_lib_tools
 from galaxy.tours import (
@@ -227,12 +228,34 @@ class SentryClientMixin:
                 level=logging.INFO,  # Capture info and above as breadcrumbs
                 event_level=getattr(logging, event_level),  # Send errors as events
             )
+
+            def before_send(event, hint):
+                if "exc_info" in hint:
+                    exc_type, exc_value, tb = hint["exc_info"]
+                    if isinstance(exc_value, ToolTemplatingException):
+                        # We set a custom fingerprint that may look like:
+                        # ["Error occurred while {action_str.lower()} for tool '{tool.id}'",
+                        #  "1.0",
+                        #  "cannot find 'file_name' while searching for 'species_chromosomes.file_name'"]
+                        # If we don't do this issues are never properly grouped since by default the calling stack is inspected,
+                        # and that is always unique in cheetah as it is dynamically generated.
+                        event["fingerprint"] = [str(exc_value), str(exc_value.tool_version), str(exc_value.__cause__)]
+                        event.setdefault("tags", {}).update(
+                            {
+                                "tool_is_latest": exc_value.is_latest,
+                                "tool_id": str(exc_value.tool_id),
+                                "tool_version": exc_value.tool_version,
+                            }
+                        )
+                return event
+
             self.sentry_client = sentry_sdk.init(
                 self.config.sentry_dsn,
                 release=f"{self.config.version_major}.{self.config.version_minor}",
                 integrations=[sentry_logging],
                 traces_sample_rate=self.config.sentry_traces_sample_rate,
                 ca_certs=self.config.sentry_ca_certs,
+                before_send=before_send,
             )
 
 
@@ -814,20 +837,20 @@ class UniverseApplication(StructuredApp, GalaxyManagerApplication):
             )
             self.application_stack.register_postfork_function(self.prune_history_audit_task.start)
             self.haltables.append(("HistoryAuditTablePruneTask", self.prune_history_audit_task.shutdown))
-        # Start the job manager
-        self.application_stack.register_postfork_function(self.job_manager.start)
         self.proxy_manager = ProxyManager(self.config)
 
         # Must be initialized after job_config.
         self.workflow_scheduling_manager = scheduling_manager.WorkflowSchedulingManager(self)
 
         self.trs_proxy = self._register_singleton(TrsProxy, TrsProxy(self.config))
+        # We need InteractiveToolManager before the job handler starts
+        self.interactivetool_manager = InteractiveToolManager(self)
+        # Start the job manager
+        self.application_stack.register_postfork_function(self.job_manager.start)
         # Must be initialized after any component that might make use of stack messaging is configured. Alternatively if
         # it becomes more commonly needed we could create a prefork function registration method like we do with
         # postfork functions.
         self.application_stack.init_late_prefork()
-
-        self.interactivetool_manager = InteractiveToolManager(self)
 
         # Configure handling of signals
         handlers = {}

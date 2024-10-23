@@ -477,7 +477,7 @@
 :Description:
     conda channels to enable by default
     (https://conda.io/docs/user-guide/tasks/manage-channels.html)
-:Default: ``conda-forge,bioconda,defaults``
+:Default: ``conda-forge,bioconda``
 :Type: str
 
 
@@ -791,22 +791,6 @@
     config.
 :Default: ``None``
 :Type: seq
-
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-``user_config_templates_index_by``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:Description:
-    Configure URIs for user object stores to use either the object ID
-    ('id') or UUIDs ('uuid'). Either is fine really, Galaxy doesn't
-    typically expose database objects by 'id' but there isn't any
-    obvious disadvantage to doing it in this case and it keeps user
-    exposed URIs much smaller. The default of UUID feels a little more
-    like a typical way to do this within Galaxy though. Do not change
-    this value once user object stores have been created.
-:Default: ``uuid``
-:Type: str
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1606,8 +1590,8 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
-    Default cache size for caching object stores if cache not
-    configured for that object store entry.
+    Default cache size, in GB, for caching object stores if the cache
+    is not configured for that object store entry.
 :Default: ``-1``
 :Type: int
 
@@ -2060,7 +2044,7 @@
     defaults to "GLOBAL" if not set or the
     `geographical_server_location_code` value is invalid or
     unsupported. To see a full list of supported locations, visit
-    https://galaxyproject.org/admin/carbon_emissions
+    https://docs.galaxyproject.org/en/master/admin/carbon_emissions.html
 :Default: ``GLOBAL``
 :Type: str
 
@@ -2128,10 +2112,31 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
 :Description:
-    Map for interactivetool proxy.
+    Map for the interactivetool proxy. Mappings are stored in a SQLite
+    database file located on this path. As an alternative, you may
+    also store them in any other RDBMS supported by SQLAlchemy using
+    the option ``interactivetoolsproxy_map``, which overrides this
+    one.
     The value of this option will be resolved with respect to
     <data_dir>.
 :Default: ``interactivetools_map.sqlite``
+:Type: str
+
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+``interactivetoolsproxy_map``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    Use a database supported by SQLAlchemy as map for the
+    interactivetool proxy. When this option is set, the value of
+    ``interactivetools_map`` is ignored. The value of this option must
+    be a `SQLAlchemy database URL
+    <https://docs.sqlalchemy.org/en/20/core/engines.html#database-urls>`_.
+    Mappings are written to the table "gxitproxy" within the database.
+    This value cannot match ``database_connection`` nor
+    ``install_database_connection``.
+:Default: ``None``
 :Type: str
 
 
@@ -5597,6 +5602,3 @@
     This requires the help_forum_api_url to be set.
 :Default: ``false``
 :Type: bool
-
-
-

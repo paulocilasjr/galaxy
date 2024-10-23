@@ -143,7 +143,7 @@ isort = "*"
 lxml = "!=4.2.2"
 markdown-it-reporter = "*"
 myst-parser = "*"
-onedatafilerestclient = "==21.2.5.1"
+onedatafilerestclient = "==21.2.5.2"
 pkce = "*"
 playwright = "*"
 pytest = "*"
@@ -183,10 +183,10 @@ types-dataclasses = "*"
 types-docutils = "*"
 types-Markdown = "*"
 types-paramiko = "*"
-types-pkg-resources = "*"
 types-python-dateutil = "*"
 types-PyYAML = "*"
 types-requests = "*"
+types-setuptools = "*"
 types-six = "*"
 
 [tool.ruff]
@@ -216,6 +216,10 @@ allow-dict-calls-with-keyword-arguments = true
 # options we need is not complete, but these are the one currently implemented.
 combine-as-imports = true
 relative-imports-order = "closest-to-furthest"
+
+[tool.ruff.lint.pyupgrade]
+# Preserve types, even if a file imports `from __future__ import annotations`.
+keep-runtime-typing = true
 
 [tool.ruff.lint.per-file-ignores]
 # Don't check pyupgrade rules on tool scripts, which may use different Python versions

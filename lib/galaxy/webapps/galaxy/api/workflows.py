@@ -83,6 +83,7 @@ from galaxy.schema.workflows import (
 from galaxy.structured_app import StructuredApp
 from galaxy.tool_shed.galaxy_install.install_manager import InstallRepositoryManager
 from galaxy.tools import recommendations
+from galaxy.tools._types import ParameterValidationErrorsT
 from galaxy.tools.parameters import populate_state
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
 from galaxy.web import (
@@ -243,7 +244,9 @@ class WorkflowsAPIController(
                     trs_version_id = None
                     import_source = None
                     if "trs_url" in payload:
-                        parts = self.app.trs_proxy.match_url(payload["trs_url"])
+                        parts = self.app.trs_proxy.match_url(
+                            payload["trs_url"], trans.app.config.fetch_url_allowlist_ips
+                        )
                         if parts:
                             server = self.app.trs_proxy.server_from_url(parts["trs_base_url"])
                             trs_tool_id = parts["tool_id"]
@@ -251,7 +254,7 @@ class WorkflowsAPIController(
                             payload["trs_tool_id"] = trs_tool_id
                             payload["trs_version_id"] = trs_version_id
                         else:
-                            raise exceptions.MessageException("Invalid TRS URL.")
+                            raise exceptions.RequestParameterInvalidException(f"Invalid TRS URL {payload['trs_url']}.")
                     else:
                         trs_server = payload.get("trs_server")
                         server = self.app.trs_proxy.get_server(trs_server)
@@ -537,7 +540,7 @@ class WorkflowsAPIController(
         module = module_factory.from_dict(trans, payload, from_tool_form=True)
         if "tool_state" not in payload:
             module_state: Dict[str, Any] = {}
-            errors: Dict[str, str] = {}
+            errors: ParameterValidationErrorsT = {}
             populate_state(trans, module.get_inputs(), inputs, module_state, errors=errors, check=True)
             module.recover_state(module_state, from_tool_form=True)
             module.check_and_update_state()
