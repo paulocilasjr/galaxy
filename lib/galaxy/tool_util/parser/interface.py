@@ -5,6 +5,7 @@ from abc import (
     ABCMeta,
     abstractmethod,
 )
+from enum import Enum
 from os.path import join
 from typing import (
     Any,
@@ -49,9 +50,18 @@ AssertionList = Optional[List[AssertionDict]]
 XmlInt = Union[str, int]
 
 
+class OutputCompareType(str, Enum):
+    diff = "diff"
+    re_match = "re_match"
+    sim_size = "sim_size"
+    re_match_multiline = "re_match_multiline"
+    contains = "contains"
+    image_diff = "image_diff"
+
+
 class ToolSourceTestOutputAttributes(TypedDict):
     object: NotRequired[Optional[Any]]
-    compare: str
+    compare: OutputCompareType
     lines_diff: int
     delta: int
     delta_frac: Optional[float]
@@ -145,7 +155,7 @@ class ToolSource(metaclass=ABCMeta):
     def parse_version(self) -> Optional[str]:
         """Parse a version describing the abstract tool."""
 
-    def parse_tool_module(self):
+    def parse_tool_module(self) -> Optional[Tuple[str, str]]:
         """Load Tool class from a custom module. (Optional).
 
         If not None, return pair containing module and class (as strings).
@@ -159,7 +169,7 @@ class ToolSource(metaclass=ABCMeta):
         """
         return None
 
-    def parse_tool_type(self):
+    def parse_tool_type(self) -> Optional[str]:
         """Load simple tool type string (e.g. 'data_source', 'default')."""
         return None
 
@@ -433,18 +443,11 @@ class DynamicOptions(metaclass=ABCMeta):
         """If dynamic options are loaded from an index file, return the name."""
 
 
-DrillDownDynamicFilters = Dict[str, Dict[str, dict]]  # {input key: {metadata_key: metadata values}}
-
-
 class DrillDownDynamicOptions(metaclass=ABCMeta):
 
     @abstractmethod
     def from_code_block(self) -> Optional[str]:
         """Get a code block to do an eval on."""
-
-    @abstractmethod
-    def from_filters(self) -> Optional[DrillDownDynamicFilters]:
-        """Get filters to apply to target datasets."""
 
 
 class InputSource(metaclass=ABCMeta):
@@ -465,6 +468,12 @@ class InputSource(metaclass=ABCMeta):
     @abstractmethod
     def get_bool(self, key, default):
         """Return simple named properties as boolean for this input source.
+        keys to be supported depend on the parameter type.
+        """
+
+    @abstractmethod
+    def get_bool_or_none(self, key, default):
+        """Return simple named properties as boolean or none for this input source.
         keys to be supported depend on the parameter type.
         """
 
@@ -645,12 +654,14 @@ JsonTestCollectionDefDict = TypedDict(
 )
 
 
-def xml_data_input_to_json(xml_input: ToolSourceTestInput) -> "JsonTestDatasetDefDict":
+def xml_data_input_to_json(xml_input: ToolSourceTestInput) -> Optional["JsonTestDatasetDefDict"]:
     attributes = xml_input["attributes"]
+    value = xml_input["value"]
+    if value is None and attributes.get("location") is None:
+        return None
     as_dict: JsonTestDatasetDefDict = {
         "class": "File",
     }
-    value = xml_input["value"]
     if value:
         as_dict["path"] = value
     _copy_if_exists(attributes, as_dict, "location")
@@ -695,10 +706,16 @@ class TestCollectionDef:
                     identifier=identifier, **element_object._test_format_to_dict()
                 )
             else:
-                as_dict = JsonTestCollectionDefDatasetElementDict(
-                    identifier=identifier,
-                    **xml_data_input_to_json(cast(ToolSourceTestInput, element_object)),
+                input_as_dict: Optional[JsonTestDatasetDefDict] = xml_data_input_to_json(
+                    cast(ToolSourceTestInput, element_object)
                 )
+                if input_as_dict is not None:
+                    as_dict = JsonTestCollectionDefDatasetElementDict(
+                        identifier=identifier,
+                        **input_as_dict,
+                    )
+                else:
+                    raise Exception("Invalid empty test element...")
             return as_dict
 
         test_format_dict = BaseJsonTestCollectionDefCollectionElementDict(
@@ -844,10 +861,13 @@ class RequiredFiles:
 class TestCollectionOutputDef:
     __test__ = False  # Prevent pytest from discovering this class (issue #12071)
 
-    def __init__(self, name, attrib, element_tests):
+    def __init__(self, name, attrib, element_tests, element_count: Optional[int] = None):
         self.name = name
         self.collection_type = attrib.get("type", None)
-        count = attrib.get("count", None)
+        if element_count is not None:
+            count = element_count
+        else:
+            count = attrib.get("count")
         self.count = int(count) if count is not None else None
         self.attrib = attrib
         self.element_tests = element_tests
@@ -857,11 +877,25 @@ class TestCollectionOutputDef:
         return TestCollectionOutputDef(
             name=as_dict["name"],
             attrib=as_dict.get("attributes", {}),
-            element_tests=as_dict["element_tests"],
+            element_tests=as_dict.get("element_tests"),
+            element_count=as_dict.get("element_count"),
         )
 
+    @staticmethod
+    def from_yaml_test_format(as_dict):
+        if "attributes" not in as_dict:
+            as_dict["attributes"] = {}
+        attributes = as_dict["attributes"]
+        # setup preferred name "elements" in accordance with work in https://github.com/galaxyproject/planemo/pull/1417
+        # TODO: test this works recursively...
+        if "elements" in as_dict and "element_tests" not in as_dict:
+            as_dict["element_tests"] = as_dict["elements"]
+        if "collection_type" in as_dict:
+            attributes["type"] = as_dict["collection_type"]
+        return TestCollectionOutputDef.from_dict(as_dict)
+
     def to_dict(self):
-        return dict(name=self.name, attributes=self.attrib, element_tests=self.element_tests)
+        return dict(name=self.name, attributes=self.attrib, element_tests=self.element_tests, element_count=self.count)
 
 
 class DrillDownOptionsDict(TypedDict):

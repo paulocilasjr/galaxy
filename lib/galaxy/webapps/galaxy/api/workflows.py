@@ -42,6 +42,7 @@ from galaxy.managers.context import (
     ProvidesHistoryContext,
     ProvidesUserContext,
 )
+from galaxy.managers.landing import LandingRequestManager
 from galaxy.managers.workflows import (
     MissingToolsException,
     RefactorRequest,
@@ -68,12 +69,15 @@ from galaxy.schema.invocation import (
 from galaxy.schema.schema import (
     AsyncFile,
     AsyncTaskResultSummary,
+    ClaimLandingPayload,
+    CreateWorkflowLandingRequestPayload,
     InvocationSortByEnum,
     InvocationsStateCounts,
     SetSlugPayload,
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
+    WorkflowLandingRequest,
     WorkflowSortByEnum,
 )
 from galaxy.schema.workflows import (
@@ -101,7 +105,9 @@ from galaxy.webapps.galaxy.api import (
     BaseGalaxyAPIController,
     depends,
     DependsOnTrans,
+    DependsOnUser,
     IndexQueryTag,
+    LandingUuidPathParam,
     Router,
     search_query_param,
 )
@@ -858,8 +864,20 @@ query_tags = [
         "Include only published workflows in the final result. Be sure the query parameter `show_published` is set to `true` if to include all published workflows and not just the requesting user's.",
     ),
     IndexQueryTag(
-        "is:share_with_me",
+        "is:importable",
+        "Include only importable workflows in the final result.",
+    ),
+    IndexQueryTag(
+        "is:deleted",
+        "Include only deleted workflows in the final result.",
+    ),
+    IndexQueryTag(
+        "is:shared_with_me",
         "Include only workflows shared with the requesting user.  Be sure the query parameter `show_shared` is set to `true` if to include shared workflows.",
+    ),
+    IndexQueryTag(
+        "is:bookmarked",
+        "Include only workflows bookmarked by the requesting user.",
     ),
 ]
 
@@ -897,6 +915,7 @@ RefactorWorkflowBody = Annotated[
 @router.cbv
 class FastAPIWorkflows:
     service: WorkflowsService = depends(WorkflowsService)
+    landing_manager: LandingRequestManager = depends(LandingRequestManager)
 
     @router.get(
         "/api/workflows",
@@ -1146,6 +1165,33 @@ class FastAPIWorkflows:
         trans: ProvidesHistoryContext = DependsOnTrans,
     ) -> StoredWorkflowDetailed:
         return self.service.show_workflow(trans, workflow_id, instance, legacy, version)
+
+    @router.post("/api/workflow_landings", public=True, allow_cors=True)
+    def create_landing(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        workflow_landing_request: CreateWorkflowLandingRequestPayload = Body(...),
+    ) -> WorkflowLandingRequest:
+        return self.landing_manager.create_workflow_landing_request(workflow_landing_request)
+
+    @router.post("/api/workflow_landings/{uuid}/claim")
+    def claim_landing(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        uuid: UUID4 = LandingUuidPathParam,
+        payload: Optional[ClaimLandingPayload] = Body(...),
+        user: model.User = DependsOnUser,
+    ) -> WorkflowLandingRequest:
+        return self.landing_manager.claim_workflow_landing_request(trans, uuid, payload)
+
+    @router.get("/api/workflow_landings/{uuid}")
+    def get_landing(
+        self,
+        trans: ProvidesUserContext = DependsOnTrans,
+        uuid: UUID4 = LandingUuidPathParam,
+        user: model.User = DependsOnUser,
+    ) -> WorkflowLandingRequest:
+        return self.landing_manager.get_workflow_landing_request(trans, uuid)
 
 
 StepDetailQueryParam = Annotated[
