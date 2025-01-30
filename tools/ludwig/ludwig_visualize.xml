@@ -1,0 +1,381 @@
+<tool id="ludwig_visualize" name="Ludwig Visualize" version="@VERSION@" profile="@PROFILE@">
+    <description>analyzes results and shows in plots</description>
+    <macros>
+        <import>ludwig_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements_gpu" />
+    <expand macro="macro_stdio" />
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+            #set $visualization = $visualization_selector.visualization.value
+
+            mkdir -p "./results" &&
+            python '$__tool_directory__/ludwig_visualize.py'
+                --visualization '$visualization'
+                --output_directory "./results"
+                #if 'hyperopt_stats_path' in $visualization_selector
+                    --hyperopt_stats_path '${visualization_selector.hyperopt_stats_path}'
+                #end if
+                #if 'predictions' in $visualization_selector
+                    #set $pdns = [x.extra_files_path + '/predictions.parquet' for x in $visualization_selector.predictions]
+                    #set $predictions = "'" + "' '".join($pdns) + "'"
+                    --predictions $predictions
+                #end if
+                #if 'probabilities' in $visualization_selector
+                    #set $pbts = [x.extra_files_path + '/predictions.parquet' for x in $visualization_selector.probabilities]
+                    #set $probabilities = "'" + "' '".join($pbts) + "'"
+                    --probabilities $probabilities
+                #end if
+                #if 'training_statistics' in $visualization_selector
+                    #set $ts = []
+                    #for $x in $visualization_selector.training_statistics
+                        #if $x.ext != 'json'
+                        $ts.append($x.extra_files_path + '/training_statistics.json')
+                        #else
+                        $ts.append($x.file_name)
+                        #end if
+                    #end for
+                    #set $training_statistics = "'" + "' '".join($ts) + "'"
+                    --training_statistics $training_statistics
+                #end if
+                #if 'test_statistics' in $visualization_selector
+                    #set $tests = []
+                    #for $tx in $visualization_selector.test_statistics
+                        #if $tx.ext != 'json'
+                        $tests.append($tx.extra_files_path + '/test_statistics.json')
+                        #else
+                        $tests.append($tx.file_name)
+                        #end if
+                    #end for
+                    #set $test_statistics = "'" + "' '".join($tests) + "'"
+                    --test_statistics $test_statistics
+                #end if
+                #if 'file_format' in $visualization_selector
+                    --file_format ${visualization_selector.file_format}
+                #end if
+                #if 'ground_truth_split' in $visualization_selector
+                    --ground_truth_split ${visualization_selector.ground_truth_split}
+                #end if
+                #if 'output_feature_name' in $visualization_selector and $visualization_selector.output_feature_name
+                    --output_feature_name '${visualization_selector.output_feature_name}'
+                #end if
+                #if 'model_names' in $visualization_selector and $visualization_selector.model_names
+                    #set $mns = $visualization_selector.model_names.split(',')
+                    #set $mns = [x.strip() for x in $mns]
+                    #set $model_names = "'" + "' '".join($mns) + "'"
+                    --model_names $model_names
+                #end if
+                #if 'threshold_output_feature_names' in $visualization_selector
+                    #set $tofns = $visualization_selector.threshold_output_feature_names.split(',')
+                    #set $tofns = [x.strip() for x in $tofns]
+                    #set $threshold_output_feature_names = "'" + "' '".join($tofns) + "'"
+                    --threshold_output_feature_names $threshold_output_feature_names
+                #end if
+                #if 'top_n_classes' in $visualization_selector and $visualization_selector.top_n_classes
+                    #set $tncs = $visualization_selector.top_n_classes.split(',')
+                    #set $tncs = [x.strip() for x in $tncs]
+                    #set $top_n_classes = ' '.join($tncs)
+                    --top_n_classes $top_n_classes
+                #end if
+                #if 'ground_truth' in $visualization_selector
+                    --ground_truth '${visualization_selector.ground_truth}'
+                #end if
+                #if 'ground_truth_metadata' in $visualization_selector
+                    #if $visualization_selector.ground_truth_metadata.ext == 'json'
+                    --ground_truth_metadata '${visualization_selector.ground_truth_metadata}'
+                    #else
+                    --ground_truth_metadata '${visualization_selector.ground_truth_metadata.extra_files_path}/training_set_metadata.json'
+                    #end if
+                #end if
+                #if 'split_file' in $visualization_selector
+                    --split_file '${visualization_selector.split_file}'
+                #end if
+                #if 'top_k' in $visualization_selector and $visualization_selector.top_k
+                    --top_k ${visualization_selector.top_k}
+                #end if
+                #if 'labels_limit' in $visualization_selector
+                    --labels_limit ${visualization_selector.labels_limit}
+                #end if
+                #if 'subset' in $visualization_selector
+                    --subset ${visualization_selector.subset.value}
+                #end if
+                #if 'metrics' in $visualization_selector and $visualization_selector.metrics
+                    #set $mtcs = $visualization_selector.metrics.split(',')
+                    #set $mtcs = [x.strip() for x in $mtcs]
+                    #set $metrics = "'" + "' '".join($mtcs) + "'"
+                    --metrics ${visualization_selector.metrics}
+                #end if
+                #if 'positive_label' in $visualization_selector
+                    --positive_label ${visualization_selector.positive_label}
+                #end if
+                #if 'normalize' in $visualization_selector and $visualization_selector.normalize
+                    --normalize
+                #end if
+            && echo "Done!"
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+    </configfiles>
+    <inputs>
+        <conditional name="visualization_selector">
+            <param name="visualization" type="select" label="Type of visualization">
+                <option value="compare_performance">compare_performance</option>
+                <option value="compare_classifiers_performance_from_prob">compare_classifiers_performance_from_prob</option>
+                <option value="compare_classifiers_performance_from_pred">compare_classifiers_performance_from_pred</option>
+                <option value="compare_classifiers_performance_subset">compare_classifiers_performance_subset</option>
+                <option value="compare_classifiers_performance_changing_k">compare_classifiers_performance_changing_k</option>
+                <option value="compare_classifiers_multiclass_multimetric">compare_classifiers_multiclass_multimetric</option>
+                <option value="compare_classifiers_predictions">compare_classifiers_predictions</option>
+                <option value="compare_classifiers_predictions_distribution">compare_classifiers_predictions_distribution</option>
+                <option value="confidence_thresholding">confidence_thresholding</option>
+                <option value="confidence_thresholding_data_vs_acc">confidence_thresholding_data_vs_acc</option>
+                <option value="confidence_thresholding_data_vs_acc_subset">confidence_thresholding_data_vs_acc_subset</option>
+                <option value="confidence_thresholding_data_vs_acc_subset_per_class">confidence_thresholding_data_vs_acc_subset_per_class</option>
+                <option value="confidence_thresholding_2thresholds_2d">confidence_thresholding_2thresholds_2d</option>
+                <option value="confidence_thresholding_2thresholds_3d">confidence_thresholding_2thresholds_3d</option>
+                <option value="binary_threshold_vs_metric">binary_threshold_vs_metric</option>
+                <option value="roc_curves">roc_curves</option>
+                <option value="roc_curves_from_test_statistics">roc_curves_from_test_statistics</option>
+                <option value="calibration_1_vs_all">calibration_1_vs_all</option>
+                <option value="calibration_multiclass">calibration_multiclass</option>
+                <option value="confusion_matrix">confusion_matrix</option>
+                <option value="frequency_vs_f1">frequency_vs_f1</option>
+                <option value="learning_curves">learning_curves</option>
+                <option value="hyperopt_report" selected="true">hyperopt_report</option>
+                <option value="hyperopt_hiplot">hyperopt_hiplot</option>
+            </param>
+            <when value="compare_performance">
+                <expand macro="visualize_test_statistics" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="compare_classifiers_performance_from_prob">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="compare_classifiers_performance_from_pred">
+                <expand macro="visualize_predictions" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="compare_classifiers_performance_subset">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="compare_classifiers_performance_changing_k">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="compare_classifiers_multiclass_multimetric">
+                <expand macro="visualize_test_statistics" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_top_n_classes" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="compare_classifiers_predictions">
+                <expand macro="visualize_predictions" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="compare_classifiers_predictions_distribution">
+                <expand macro="visualize_predictions" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="confidence_thresholding">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="confidence_thresholding_data_vs_acc">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="confidence_thresholding_data_vs_acc_subset">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="confidence_thresholding_data_vs_acc_subset_per_class">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+            </when>
+            <when value="confidence_thresholding_2thresholds_2d">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_threshold_output_feature_names" />
+                <expand macro="visualize_labels_limit" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="confidence_thresholding_2thresholds_3d">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_threshold_output_feature_names" />
+                <expand macro="visualize_labels_limit" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="binary_threshold_vs_metric">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_metrics" />
+                <expand macro="visualize_positive_label" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="roc_curves">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_positive_label" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="roc_curves_from_test_statistics">
+                <expand macro="visualize_test_statistics" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="calibration_1_vs_all">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_ground_truth_apply_idx" />
+            </when>
+            <when value="calibration_multiclass">
+                <expand macro="visualize_probabilities" />
+                <expand macro="visualize_ground_truth" />
+                <expand macro="visualize_ground_truth_split" />
+                <expand macro="visualize_split_file" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_labels_limit" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+                <expand macro="visualize_ground_truth_apply_idx" />
+            </when>
+            <when value="confusion_matrix">
+                <expand macro="visualize_test_statistics" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_top_n_classes" />
+                <expand macro="visualize_normalize" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="frequency_vs_f1">
+                <expand macro="visualize_test_statistics" />
+                <expand macro="visualize_ground_truth_metadata" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_top_n_classes" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="learning_curves">
+                <expand macro="visualize_training_statistics" />
+                <expand macro="visualize_output_feature_name" />
+                <expand macro="visualize_model_names" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="hyperopt_report">
+                <expand macro="visualize_hyperopt_stats_path" />
+                <expand macro="visualize_file_format" />
+            </when>
+            <when value="hyperopt_hiplot">
+                <expand macro="visualize_hyperopt_stats_path" />
+            </when>
+        </conditional>
+    </inputs>       
+    <outputs>
+        <collection type="list" name="output" label="${tool.name} ${visualization_selector.visualization} on ${on_string}">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.pdf" format="pdf" directory="results" />
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.png" format="png" directory="results" /> 
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="visualization_selector">
+                <param name="visualization" value="hyperopt_report" />
+                <param name="hyperopt_stats_path" value="temperature_hyperopt_statistics.json" ftype="json" />
+                <param name="file_type" value="pdf" />
+            </conditional>
+            <output_collection name="output" type="list">
+                <element name="hyperopt_trainer.learning_rate" file="temp_hyperopt_training.learning_rate.pdf" ftype="pdf" />
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+This tool supports various of visualizations from Ludwig. 
+
+
+**Input**
+Report output from ludwig train/experiment/evaluate/predict tool. 
+
+
+**Output**
+PNG or PDF.
+
+
+        ]]>
+    </help>
+    <expand macro="macro_citations" />
+</tool>

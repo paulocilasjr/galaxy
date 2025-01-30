@@ -1,0 +1,10 @@
+runners:
+  local:
+    load: galaxy.jobs.runners.local:LocalJobRunner
+    workers: 4
+execution:
+  default: local
+  environments:
+    local:
+      runner: local
+      docker_enabled: true

@@ -150,4 +150,15 @@
     <tool file="interactive/interactivetool_rstudio.xml" />
   </section>
   -->
+  <section id="ludwig" name="Ludwig tools">
+    <tool file="ludwig/ludwig_autogenconfig.xml" />
+    <tool file="ludwig/ludwig_embeddings.xml" />
+    <tool file="ludwig/ludwig_evaluate.xml" />
+    <tool file="ludwig/ludwig_experiment.xml"/>
+    <tool file="ludwig/ludwig_hyperopt.xml" />
+    <tool file="ludwig/ludwig_predict.xml" />
+    <tool file="ludwig/ludwig_render_config.xml" />
+    <tool file="ludwig/ludwig_train.xml" />
+    <tool file="ludwig/ludwig_visualize.xml" />
+  </section>
 </toolbox>

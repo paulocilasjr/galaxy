@@ -1,0 +1,162 @@
+<tool id="ludwig_experiment" name="Ludwig Experiment" version="@VERSION@" profile="@PROFILE@">
+    <description>trains and evaluates a model</description>
+    <macros>
+        <import>ludwig_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements_gpu" />
+    <expand macro="macro_stdio" />
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+            #import re
+            #if $config
+            ln -sf '$config' "./config.yml";
+            #end if
+
+            #if $dataset
+
+            #set $sanitized_dataset = re.sub('[^\w\-_\.]', '_', $dataset.element_identifier.strip())
+            ln -sf '$dataset' "./${sanitized_dataset}";
+            #end if
+
+            #if $training_set
+            #set $sanitized_training_set = re.sub('[^\w\-_\.]', '_', $training_set.element_identifier.strip())
+            ln -sf '$training_set' "./${sanitized_training_set}";
+            #end if
+
+            #if $validation_set
+
+            #set $sanitized_validation_set = re.sub('[^\w\-_\.]', '_', $validation_set.element_identifier.strip())
+            ln -sf '$validation_set' "./${sanitized_validation_set}";
+            #end if
+
+            #if $test_set
+
+            #set $sanitized_test_set = re.sub('[^\w\-_\.]', '_', $test_set.element_identifier.strip())
+            ln -sf '$test_set' "./${sanitized_test_set}";
+            #end if
+
+            #if $raw_data
+                unzip -o -q '$raw_data' -d ./;
+            #end if
+
+            python '$__tool_directory__/ludwig_experiment.py'
+                #if $config
+                --config "./config.yml"
+                #end if
+                #if $model_load_path
+                --model_load_path '$model_load_path.extra_files_path'
+                #end if
+                #if $model_resume_path
+                --model_resume_path '$model_resume_path.model_resume_path'
+                #end if
+                #if $dataset
+                --dataset "./${sanitized_dataset}"
+                #end if
+                #if $training_set
+                --training_set "./${sanitized_training_set}"
+                #end if
+                #if $validation_set
+                --validation_set "./${sanitized_validation_set}"
+                #end if
+                #if $test_set
+                --test_set "./${sanitized_test_set}"
+                #end if
+                #if $training_set_metadata
+                --training_set_metadata '$training_set_metadata'
+                #end if
+                #if $disable_parallel_threads
+                --disable_parallel_threads
+                #end if
+                #if $k_fold
+                --k_fold '$k_fold'
+                #end if
+                --output_directory "."
+                --data_format '$data_format'
+                --backend local
+                --eval_split '$eval_split'
+                --random_seed $random_seed
+                --skip_save_unprocessed_output
+                --skip_save_k_fold_split_indices &&
+
+            mkdir -p '$output_model.extra_files_path' &&
+            cp -r experiment_run/model/*.json experiment_run/model/model_weights '$output_model.extra_files_path' &&
+
+            echo "Experiment is Done!"        
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+    </configfiles>
+    <inputs>
+        <param argument="config" type="data" format="yaml" label="Select the dataset containing model configuration" />
+        <param argument="model_load_path" type="data" format="ludwig_model" optional="true" label="Load a pretrained model as initialization" help="Optional." />
+        <param argument="model_resume_path" type="data" format="ludwig_model" optional="true" label="Load a pretained model to resume training" help="Optional." />
+        <param argument="dataset" type="data" format="tabular,csv,h5,json,txt" optional="true" label="Input dataset" />
+        <param argument="training_set" type="data" format="tabular,csv,h5,json" optional="true" label="Input traning dataset" />
+        <param argument="validation_set" type="data" format="tabular,csv,h5,json" optional="true" label="Input validation dataset" />
+        <param argument="test_set" type="data" format="tabular,csv,h5,json" optional="true" label="Input test dataset" />
+        <param argument="training_set_metadata" type="data" format="json" optional="true" label="Training set metadata" />
+        <param argument="data_format" type="select" label="Data format">
+            <option value="auto" selected="true">auto</option>
+            <option value="tsv">tsv</option>
+            <option value="csv">csv</option>
+            <option value="h5">h5</option>
+            <option value="json">json</option>
+        </param>
+        <param argument="eval_split" type="select" label="Select the split portion for evaluation">
+            <option value="training">training</option>
+            <option value="validation">validation</option>
+            <option value="test" selected="true">test</option>
+            <option value="full">full</option>
+        </param>
+        <param argument="k_fold" type="integer" value="" optional="true" label="number of folds for a k-fold cross validation run" min="2" max="10"/>
+        <param argument="random_seed" type="integer" value="42" label="Randomness seed" min="0" max="999999"/>
+        <param argument="disable_parallel_threads" type="boolean" checked="false" label="Whether to disable parallel threads for reproducibility?" />
+        <!-- <param argument="skip_save_predictions" type="boolean" checked="false" label="Whether to skip saving predictions?" /> -->
+        <param name="raw_data" type="data" format="zip" optional="true" label="Raw data" help="Optional. Needed for images."/>
+    </inputs>       
+    <outputs>
+        <data format="ludwig_model" name="output_model" label="${tool.name} trained model on ${on_string}" />
+        <data format="html" name="output_report" from_work_dir="ludwig_experiment_report.html" label="${tool.name} report on ${on_string}" />
+        <collection type="list" name="output_pred_csv" label="${tool.name} predictions CSVs/experiment stats on ${on_string}" >
+            <discover_datasets pattern="(?P&lt;designation&gt;predictions_parquet\.csv)" format="csv" directory="experiment_run" />
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.json" format="json" directory="experiment_run" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="dataset" value="temperature_la.csv" ftype="csv" />
+            <param name="config" value="temperature_config.yml" ftype="yaml" />
+            <param name="data_format" value="csv" />
+            <output name="output_report" file="ludwig_experiment_report_test.html" compare="sim_size" delta="20000" >
+                <assert_contents>
+                    <has_text text="Experiment" />
+                </assert_contents>
+            </output>
+
+            <output_collection name="output_pred_csv" type="list" >
+                <element name="predictions_parquet.csv" >
+                    <assert_contents>
+                        <has_n_columns n="1" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+Ludwig Experiment: train on one (portion of) dataset and evalue the model performance on another (portion of) dataset.
+
+
+**Output**
+An HTML containing the evaluation report of the trained model.
+A trained Ludwig model composite dataset.
+Predictions results (csv and jsons) from the model evaluations.
+
+
+        ]]>
+    </help>
+    <expand macro="macro_citations" />
+</tool>
