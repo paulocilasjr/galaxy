@@ -7,15 +7,15 @@
 
     <token name="@PROFILE@">21.05</token>
 
-    <xml name="python_requirements_gpu">
-        <requirements>
-            <container type="docker">quay.io/goeckslab/galaxy-ludwig-gpu:latest</container>
-        </requirements>
-    </xml>
-
     <xml name="python_requirements">
         <requirements>
             <container type="docker">quay.io/goeckslab/galaxy-ludwig:0.10.3</container>
+        </requirements>
+    </xml>
+
+    <xml name="python_requirements_gpu">
+        <requirements>
+            <container type="docker">quay.io/goeckslab/galaxy-ludwig-gpu:latest</container>
         </requirements>
     </xml>
 

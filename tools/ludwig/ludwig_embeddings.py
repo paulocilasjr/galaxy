@@ -1,129 +1,145 @@
-
 import os
 import zipfile
 import argparse
+import shutil
 import pandas as pd
-import numpy as np
 import torch
-from torchvision import models, transforms
+import torchvision.models as models
+from torchvision import transforms
 from PIL import Image
-from torchvision.models import ResNet50_Weights, EfficientNet_B0_Weights, DenseNet121_Weights
+import sys
 
-# Model configurations
-MODEL_CONFIGS = {
-    "resnet": {
-        "model": lambda: models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1),
-        "img_size": (224, 224),
-        "normalization": {
-            "mean": [0.485, 0.456, 0.406],
-            "std": [0.229, 0.224, 0.225]
-        }
-    },
-    "efficientnet": {
-        "model": lambda: models.efficientnet_b0(weights=EfficientNet_B0_Weights.IMAGENET1K_V1),
-        "img_size": (224, 224),
-        "normalization": {
-            "mean": [0.485, 0.456, 0.406],
-            "std": [0.229, 0.224, 0.225]
-        }
-    },
-    "densenet": {
-        "model": lambda: models.densenet121(weights=DenseNet121_Weights.IMAGENET1K_V1),
-        "img_size": (224, 224),
-        "normalization": {
-            "mean": [0.485, 0.456, 0.406],
-            "std": [0.229, 0.224, 0.225]
-        }
-    }
+LOG.info("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+LOG.info(sys.argv[1:])
+
+# Define the default resize and normalization settings for models
+MODEL_DEFAULTS = {
+    # Default normalization (ImageNet)
+    "default": {"resize": (224, 224), "normalize": ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])},
+
+    # Models using (224, 224) resize and ImageNet normalization
+    "efficientnet_b1": {"resize": (240, 241)},
+    "efficientnet_b2": {"resize": (260, 260)},
+    "efficientnet_b3": {"resize": (300, 300)},
+    "efficientnet_b4": {"resize": (380, 380)},
+    "efficientnet_b5": {"resize": (456, 456)},
+    "efficientnet_b6": {"resize": (528, 528)},
+    "efficientnet_b7": {"resize": (600, 600)},
+    "inception_v3": {"resize": (299, 299)},
+    "swin_b": {"resize": (224, 224), "normalize": ([0.5, 0.0, 0.5], [0.5, 0.5, 0.5])},
+    "swin_s": {"resize": (224, 224), "normalize": ([0.5, 0.0, 0.5], [0.5, 0.5, 0.5])},
+    "swin_t": {"resize": (224, 224), "normalize": ([0.5, 0.0, 0.5], [0.5, 0.5, 0.5])},
+    "vit_b_16": {"resize": (224, 224), "normalize": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])},
+    "vit_b_32": {"resize": (224, 224), "normalize": ([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])},
 }
 
+# Ensure all models have normalization applied (if not defined)
+for model in MODEL_DEFAULTS:
+    if "normalize" not in MODEL_DEFAULTS[model]:
+        MODEL_DEFAULTS[model]["normalize"] = ([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+
+# Get all model names from torchvision.models
+AVAILABLE_MODELS = {name: getattr(models, name) for name in dir(models) if callable(getattr(models, name))}
+
 def extract_zip(zip_file, output_dir):
-    """
-    Extracts the contents of a ZIP file to a specified output directory.
-    """
+    """Extracts a ZIP file into a given directory."""
+    os.makedirs(output_dir, exist_ok=True)
     try:
-        os.makedirs(output_dir, exist_ok=True)
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extractall(output_dir)
-        print(f"ZIP file extracted to {output_dir}")
+        print(f"Extracted ZIP to {output_dir}")
+    except zipfile.BadZipFile:
+        raise RuntimeError("Invalid ZIP file.")
     except Exception as e:
-        print(f"Error extracting ZIP file: {e}")
-        raise
+        raise RuntimeError(f"Error extracting ZIP file: {e}")
 
-def extract_embeddings(image_dir, model_name, output_csv):
-    """
-    Extracts embeddings from images in a directory using a specified model.
-    Automatically downloads the weights for the selected model.
-    """
-    # Validate model name
-    if model_name not in MODEL_CONFIGS:
-        raise ValueError(f"Unsupported model: {model_name}. Supported models are: {list(MODEL_CONFIGS.keys())}")
+def load_model(model_name, device):
+    """Loads a specified torchvision model and modifies it for feature extraction."""
+    if model_name not in AVAILABLE_MODELS:
+        raise ValueError(f"Unsupported model: {model_name}. Available models: {list(AVAILABLE_MODELS.keys())}")
 
-    # Get model-specific settings
-    config = MODEL_CONFIGS[model_name]
-    img_size = config["img_size"]
-    normalization = config["normalization"]
-    model_class = config["model"]
+    model = AVAILABLE_MODELS[model_name](weights="DEFAULT").to(device)
 
-    # Initialize the model with pretrained weights
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model_class().to(device)  # Automatically downloads weights if not available locally
-    model.fc = torch.nn.Identity()  # Remove the classification head to extract embeddings
+    # Remove classification head dynamically
+    if hasattr(model, 'fc'):  # ResNet, EfficientNet, etc.
+        model.fc = torch.nn.Identity()
+    elif hasattr(model, 'classifier'):  # MobileNet, DenseNet, etc.
+        model.classifier = torch.nn.Identity()
+    elif hasattr(model, 'head'):  # Vision Transformer
+        model.head = torch.nn.Identity()
+
     model.eval()
+    return model
 
-    # Define image transformation pipeline
-    transform = transforms.Compose([
-        transforms.Resize(img_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=normalization["mean"], std=normalization["std"])
-    ])
+def process_image(image_path, transform, device):
+    """Loads and transforms an image."""
+    try:
+        image = Image.open(image_path).convert("RGB")
+        return transform(image).unsqueeze(0).to(device)
+    except Exception as e:
+        print(f"Skipping {image_path}: {e}")
+        return None
 
-    print("transform")
-    # Process each image and extract embeddings
+def extract_embeddings(image_dir, model_name, apply_normalization):
+    """Extracts embeddings from images using a specified model."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model(model_name, device)
+
+    # Retrieve the resize and normalize values for the selected model
+    model_settings = MODEL_DEFAULTS.get(model_name, MODEL_DEFAULTS["default"])
+    resize = model_settings["resize"]
+
+    # Apply normalization if required by the user
+    if apply_normalization:
+        normalize = model_settings.get("normalize")
+        print(f"Resize = {resize}")
+        print(f"Normalize = {normalize}")
+        transform = transforms.Compose([
+            transforms.Resize(resize),  # Dynamic size based on model
+            transforms.ToTensor(),
+            transforms.Normalize(mean=normalize[0], std=normalize[1])
+        ])
+    else:
+        print(f"Resize = {resize}")
+        transform = transforms.Compose([
+            transforms.Resize(resize),  # Dynamic size based on model
+            transforms.ToTensor(),
+        ])
+
     results = []
-    for root, _, files in os.walk(image_dir):
-        for file in files:
-            if not file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff")):
-                continue  # Skip non-image files
-            try:
-                # Load and transform image
-                image_path = os.path.join(root, file)
-                image = Image.open(image_path).convert("RGB")
-                input_tensor = transform(image).unsqueeze(0).to(device)
-                # Extract embedding
-                with torch.no_grad():
-                    embedding = model(input_tensor).squeeze().cpu().numpy()
-                # Store result
-                results.append([file] + embedding.tolist())
-            except Exception as e:
-                print(f"Error processing {file}: {e}")
+    image_files = [
+        os.path.join(root, file)
+        for root, _, files in os.walk(image_dir)
+        for file in files if file.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".tiff"))
+    ]
+
+    print(f"Processing {len(image_files)} images...")
+
+    with torch.no_grad():
+        for image_path in image_files:
+            input_tensor = process_image(image_path, transform, device)
+            if input_tensor is None:
+                continue  # Skip failed images
+            embedding = model(input_tensor).squeeze().cpu().numpy()
+            results.append([os.path.basename(image_path)] + embedding.tolist())
 
     # Save results to CSV
-    try:
-        df = pd.DataFrame(results)
-        df.to_csv(output_csv, index=False, header=False)
-        print(f"Embeddings saved to {output_csv}")
-    except Exception as e:
-        print(f"Error saving CSV: {e}")
-        raise
+    if results:
+        num_features = len(results[0]) - 1  # Subtract 1 for the filename
+        header = ["sample_name"] + [f"vector{i+1}" for i in range(num_features)]
+        df = pd.DataFrame(results, columns=header)
+        df.to_csv("embeddings.csv", index=False)
+        print(f"Saved embeddings to embeddings.csv")
+    else:
+        print("No valid images found. CSV not saved.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract image embeddings using a pretrained model.")
+    parser = argparse.ArgumentParser(description="Extract image embeddings using a torchvision model.")
     parser.add_argument("--zip_file", required=True, help="Path to the ZIP file containing images.")
-    parser.add_argument("--model_name", required=True, choices=MODEL_CONFIGS.keys(), help="Model to use for embedding extraction (resnet, efficientnet, densenet).")
-    parser.add_argument("--output_csv", required=True, help="Path to save the extracted embeddings CSV.")
+    parser.add_argument("--model_name", required=True, choices=AVAILABLE_MODELS.keys(), help="Model for embedding extraction.")
+    parser.add_argument("--normalize", action="store_true", help="Whether to apply normalization.")
     args = parser.parse_args()
 
-    # Extract ZIP contents
     temp_dir = "temp_images"
     extract_zip(args.zip_file, temp_dir)
-
-    # Extract embeddings from images
-    extract_embeddings(temp_dir, args.model_name, args.output_csv)
-
-    # Clean up temporary directory
-    for root, _, files in os.walk(temp_dir):
-        for file in files:
-            os.remove(os.path.join(root, file))
-    os.rmdir(temp_dir)
-
+    extract_embeddings(temp_dir, args.model_name, args.normalize)
