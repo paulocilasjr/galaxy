@@ -7,9 +7,9 @@
 
     <token name="@PROFILE@">21.05</token>
 
-    <xml name="embedding_requirements">
+    <xml name="ludwig-embeddings">
         <requirements>
-            <container type="docker">ludwig-docker</container>
+            <container type="docker">ludwig-embeddings</container>
         </requirements>
     </xml>
 
