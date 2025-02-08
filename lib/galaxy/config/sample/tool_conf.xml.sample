@@ -160,6 +160,6 @@
     <tool file="ludwig/ludwig_render_config.xml" />
     <tool file="ludwig/ludwig_train.xml" />
     <tool file="ludwig/ludwig_visualize.xml" />
-    <tool file="ludwig/test.xml" />
+    <tool file="ludwig/ludwig_mil.xml" />
   </section>
   </toolbox>
