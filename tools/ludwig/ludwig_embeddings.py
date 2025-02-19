@@ -2,13 +2,11 @@
 This module provides functionality to extract
 image embeddings using a specified
 pretrained model from the torchvision library.
-
 It includes functions to:
 - Load and process images from a ZIP file.
 - Apply model-specific preprocessing and transformations.
 - Extract embeddings using various models.
 - Save the resulting embeddings into a CSV file.
-
 Modules required:
 - argparse: For command-line argument parsing.
 - os, csv, zipfile: For file handling (ZIP file extraction, CSV writing).
@@ -107,16 +105,13 @@ def extract_zip(zip_file):
 
     # Use a writable temp directory
     output_dir = tempfile.mkdtemp(prefix="extracted_zip_")
-
     try:
         file_list = []
         with zipfile.ZipFile(zip_file, 'r') as zip_ref:
             zip_ref.extractall(output_dir)
             file_list = zip_ref.namelist()
-
         logging.info(f"ZIP extracted to: {output_dir}")
         return output_dir, file_list
-
     except zipfile.BadZipFile as exc:
         raise RuntimeError("Invalid ZIP file.") from exc
     except Exception as exc:
@@ -191,7 +186,7 @@ def write_csv(output_csv, list_embeddings):
             logging.info("CSV created")
         else:
             csv_writer.writerow(["sample_name"])
-            print("No valid images found. Empty CSV created.")
+            logging.info("No valid images found. Empty CSV created.")
 
 
 def extract_embeddings(model_name,
