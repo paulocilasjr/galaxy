@@ -973,7 +973,7 @@ class UsesStoredWorkflowMixin(SharableItemSecurityMixin, UsesAnnotations):
             except exceptions.ToolMissingException:
                 pass
 
-    def _import_shared_workflow(self, trans, stored):
+    def _import_shared_workflow(self, trans, stored: model.StoredWorkflow):
         """Imports a shared workflow"""
         # Copy workflow.
         imported_stored = model.StoredWorkflow()
@@ -1003,7 +1003,7 @@ class UsesStoredWorkflowMixin(SharableItemSecurityMixin, UsesAnnotations):
         """
         Converts a workflow to a dict of attributes suitable for exporting.
         """
-        workflow_contents_manager = workflows.WorkflowContentsManager(self.app)
+        workflow_contents_manager = workflows.WorkflowContentsManager(self.app, self.app.trs_proxy)
         return workflow_contents_manager.workflow_to_dict(
             trans,
             stored,
@@ -1090,7 +1090,7 @@ class SharableMixin:
 
     def _is_valid_slug(self, slug):
         """Returns true if slug is valid."""
-        return managers_base.is_valid_slug(slug)
+        return SlugBuilder.is_valid_slug(slug)
 
     @web.expose
     @web.require_login("modify Galaxy items")
@@ -1123,6 +1123,11 @@ class SharableMixin:
     @web.expose
     def display_by_username_and_slug(self, trans, username, slug, **kwargs):
         """Display item by username and slug."""
+        # Ensure slug is in the correct format.
+        slug = slug.encode("latin1").decode("utf-8")
+        self._display_by_username_and_slug(trans, username, slug, **kwargs)
+
+    def _display_by_username_and_slug(self, trans, username, slug, **kwargs):
         raise NotImplementedError()
 
     def get_item(self, trans, id):
@@ -1292,7 +1297,7 @@ class UsesExtendedMetadataMixin(SharableItemSecurityMixin):
                 yield from self._scan_json_block(meta[a], f"{prefix}/{a}")
         elif isinstance(meta, list):
             for i, a in enumerate(meta):
-                yield from self._scan_json_block(a, prefix + "[%d]" % (i))
+                yield from self._scan_json_block(a, prefix + f"[{i}]")
         else:
             # BUG: Everything is cast to string, which can lead to false positives
             # for cross type comparisions, ie "True" == True

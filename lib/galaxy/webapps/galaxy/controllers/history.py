@@ -88,8 +88,7 @@ class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesIt
             "allow_user_dataset_purge": trans.app.config.allow_user_dataset_purge,
         }
 
-    @web.expose
-    def display_by_username_and_slug(self, trans, username, slug, **kwargs):
+    def _display_by_username_and_slug(self, trans, username, slug, **kwargs):
         """
         Display history based on a username and slug.
         """
@@ -232,9 +231,7 @@ class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesIt
                     except Exception:
                         log.exception(f"Unable to purge dataset ({hda.dataset.id}) on purge of hda ({hda.id}):")
                 count += 1
-            return trans.show_ok_message(
-                "%d datasets have been deleted permanently" % count, refresh_frames=["history"]
-            )
+            return trans.show_ok_message(f"{count} datasets have been deleted permanently", refresh_frames=["history"])
         return trans.show_error_message("Cannot purge deleted datasets from this session.")
 
     @web.expose_api_anonymous
@@ -268,7 +265,7 @@ class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesIt
             return {
                 "title": "Change history name(s)",
                 "inputs": [
-                    {"name": "name_%i" % i, "label": f"Current: {h.name}", "value": h.name}
+                    {"name": f"name_{i}", "label": f"Current: {h.name}", "value": h.name}
                     for i, h in enumerate(histories)
                 ],
             }
@@ -276,7 +273,7 @@ class HistoryController(BaseUIController, SharableMixin, UsesAnnotations, UsesIt
             messages = []
             for i, h in enumerate(histories):
                 cur_name = h.get_display_name()
-                new_name = payload.get("name_%i" % i)
+                new_name = payload.get(f"name_{i}")
                 # validate name is empty
                 if not isinstance(new_name, str) or not new_name.strip():
                     messages.append(f"You must specify a valid name for History '{cur_name}'.")

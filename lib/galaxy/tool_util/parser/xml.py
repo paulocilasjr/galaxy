@@ -71,6 +71,10 @@ from .output_objects import (
     ToolOutputCollection,
     ToolOutputCollectionStructure,
 )
+from .parameter_validators import (
+    AnyValidatorModel,
+    parse_xml_validators,
+)
 from .stdio import (
     aggressive_error_checks,
     error_on_exit_code,
@@ -991,8 +995,8 @@ def __pull_up_params(parent_elem, child_elem):
         parent_elem.append(param_elem)
 
 
-def __prefix_join(prefix, name, index=None):
-    name = name if index is None else "%s_%d" % (name, index)
+def __prefix_join(prefix, name, index: Optional[int] = None):
+    name = name if index is None else f"{name}_{index}"
     return name if not prefix else f"{prefix}|{name}"
 
 
@@ -1068,7 +1072,7 @@ def __parse_param_elem(param_elem, i=0) -> ToolSourceTestInput:
                 if composite_data_name is None:
                     # Generate a unique name; each test uses a
                     # fresh history.
-                    composite_data_name = "_COMPOSITE_RENAMED_t%d_%s" % (i, uuid.uuid1().hex)
+                    composite_data_name = f"_COMPOSITE_RENAMED_t{i}_{uuid.uuid1().hex}"
             elif child.tag == "metadata":
                 attrib["metadata"][child.get("name")] = child.get("value")
             elif child.tag == "edit_attributes":
@@ -1296,18 +1300,23 @@ class XmlPageSource(PageSource):
 
 class XmlDynamicOptions(DynamicOptions):
 
-    def __init__(self, options_elem: Element):
+    def __init__(self, options_elem: Element, dynamic_option_code: Optional[str]):
         self._options_elem = options_elem
+        self._dynamic_options_code = dynamic_option_code
 
     def elem(self) -> Element:
         return self._options_elem
 
+    def get_dynamic_options_code(self) -> Optional[str]:
+        """If dynamic options are a piece of code to eval, return it."""
+        return self._dynamic_options_code
+
     def get_data_table_name(self) -> Optional[str]:
         """If dynamic options are loaded from a data table, return the name."""
-        return self._options_elem.get("from_data_table")
+        return self._options_elem.get("from_data_table") if self._options_elem is not None else None
 
     def get_index_file_name(self) -> Optional[str]:
-        return self._options_elem.get("from_file")
+        return self._options_elem.get("from_file") if self._options_elem is not None else None
 
 
 class XmlInputSource(InputSource):
@@ -1339,13 +1348,18 @@ class XmlInputSource(InputSource):
     def parse_sanitizer_elem(self):
         return self.input_elem.find("sanitizer")
 
-    def parse_validator_elems(self):
-        return self.input_elem.findall("validator")
+    def parse_validators(self) -> List[AnyValidatorModel]:
+        return parse_xml_validators(self.input_elem)
 
     def parse_dynamic_options(self) -> Optional[XmlDynamicOptions]:
         """Return a XmlDynamicOptions to describe dynamic options if options elem is available."""
         options_elem = self.input_elem.find("options")
-        return XmlDynamicOptions(options_elem) if options_elem is not None else None
+        dynamic_option_code = self.input_elem.get("dynamic_options")
+        is_dynamic = options_elem is not None or dynamic_option_code is not None
+        if is_dynamic:
+            return XmlDynamicOptions(options_elem, dynamic_option_code)
+        else:
+            return None
 
     def parse_static_options(self) -> List[Tuple[str, str, bool]]:
         """

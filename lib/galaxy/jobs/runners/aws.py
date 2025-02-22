@@ -341,7 +341,7 @@ class AWSBatchJobRunner(AsynchronousJobRunner):
             "environment": _add_galaxy_environment_variables(
                 destination_params.get("vcpu"), destination_params.get("memory"),
             ),
-            "user": "%d:%d" % (os.getuid(), os.getgid()),
+            "user": f"{os.getuid()}:{os.getgid()}",
             "privileged": destination_params.get("privileged"),
             "logConfiguration": {"logDriver": "awslogs"},
         }
@@ -420,7 +420,8 @@ class AWSBatchJobRunner(AsynchronousJobRunner):
             self.monitor_queue.put(ajs)
 
     def fail_job(self, job_state: JobState, exception=False, message="Job failed", full_status=None):
-        if getattr(job_state, "stop_job", True):
+        job = job_state.job_wrapper.get_job()
+        if getattr(job_state, "stop_job", True) and job.state != model.Job.states.NEW:
             self.stop_job(job_state.job_wrapper)
         job_state.job_wrapper.reclaim_ownership()
         self._handle_runner_state("failure", job_state)

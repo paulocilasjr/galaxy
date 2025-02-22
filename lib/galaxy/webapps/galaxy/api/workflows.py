@@ -64,6 +64,7 @@ from galaxy.schema.invocation import (
     InvocationStepJobsResponseJobModel,
     InvocationStepJobsResponseStepModel,
     InvocationUpdatePayload,
+    WorkflowInvocationRequestModel,
     WorkflowInvocationResponse,
 )
 from galaxy.schema.schema import (
@@ -77,6 +78,7 @@ from galaxy.schema.schema import (
     ShareWithPayload,
     ShareWithStatus,
     SharingStatus,
+    WorkflowJobMetric,
     WorkflowLandingRequest,
     WorkflowSortByEnum,
 )
@@ -245,29 +247,14 @@ class WorkflowsAPIController(
                     payload["workflow"] = workflow_src
                     return self.__api_import_new_workflow(trans, payload, **kwd)
                 elif archive_source == "trs_tool":
-                    server = None
-                    trs_tool_id = None
-                    trs_version_id = None
-                    import_source = None
-                    if "trs_url" in payload:
-                        parts = self.app.trs_proxy.match_url(
-                            payload["trs_url"], trans.app.config.fetch_url_allowlist_ips
-                        )
-                        if parts:
-                            server = self.app.trs_proxy.server_from_url(parts["trs_base_url"])
-                            trs_tool_id = parts["tool_id"]
-                            trs_version_id = parts["version_id"]
-                            payload["trs_tool_id"] = trs_tool_id
-                            payload["trs_version_id"] = trs_version_id
-                        else:
-                            raise exceptions.RequestParameterInvalidException(f"Invalid TRS URL {payload['trs_url']}.")
-                    else:
-                        trs_server = payload.get("trs_server")
-                        server = self.app.trs_proxy.get_server(trs_server)
-                        trs_tool_id = payload.get("trs_tool_id")
-                        trs_version_id = payload.get("trs_version_id")
-
-                    archive_data = server.get_version_descriptor(trs_tool_id, trs_version_id)
+                    workflow = self.workflow_contents_manager.get_or_create_workflow_from_trs(
+                        trans,
+                        trs_url=payload.get("trs_url"),
+                        trs_id=payload.get("trs_tool_id"),
+                        trs_version=payload.get("trs_version_id"),
+                        trs_server=payload.get("trs_server"),
+                    )
+                    return self.__api_import_response(workflow)
                 else:
                     try:
                         archive_data = stream_url_to_str(
@@ -544,12 +531,12 @@ class WorkflowsAPIController(
         inputs = payload.get("inputs", {})
         trans.workflow_building_mode = workflow_building_modes.ENABLED
         module = module_factory.from_dict(trans, payload, from_tool_form=True)
-        if "tool_state" not in payload:
-            module_state: Dict[str, Any] = {}
-            errors: ParameterValidationErrorsT = {}
-            populate_state(trans, module.get_inputs(), inputs, module_state, errors=errors, check=True)
-            module.recover_state(module_state, from_tool_form=True)
-            module.check_and_update_state()
+
+        module_state: Dict[str, Any] = {}
+        errors: ParameterValidationErrorsT = {}
+        populate_state(trans, module.get_inputs(), inputs, module_state, errors=errors, check=True)
+        module.recover_state(module_state, from_tool_form=True)
+        module.check_and_update_state()
         step_dict = {
             "name": module.get_name(),
             "tool_state": module_state,
@@ -602,13 +589,15 @@ class WorkflowsAPIController(
         workflow, missing_tool_tups = self._workflow_from_dict(
             trans, raw_workflow_description, workflow_create_options, source=source
         )
-        workflow_id = workflow.id
-        workflow = workflow.latest_workflow
+        return self.__api_import_response(workflow)
 
+    def __api_import_response(self, stored_workflow: model.StoredWorkflow):
+        workflow = stored_workflow.latest_workflow
+        assert workflow
         response = {
             "message": f"Workflow '{workflow.name}' imported successfully.",
             "status": "success",
-            "id": trans.security.encode_id(workflow_id),
+            "id": self.app.security.encode_id(stored_workflow.id),
         }
         if workflow.has_errors:
             response["message"] = "Imported, but some steps in this workflow have validation errors."
@@ -1465,6 +1454,17 @@ class FastAPIInvocations:
         return self.invocations_service.show(trans, invocation_id, serialization_params, eager=True)
 
     @router.get(
+        "/api/invocations/{invocation_id}/request",
+        summary="Get a description modeling an API request to invoke this workflow - this is recreated and will be more specific in some ways than the initial creation request.",
+    )
+    def invocation_as_request(
+        self,
+        invocation_id: InvocationIDPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> WorkflowInvocationRequestModel:
+        return self.invocations_service.as_request(trans, invocation_id)
+
+    @router.get(
         "/api/workflows/{workflow_id}/invocations/{invocation_id}",
         summary="Get detailed description of a workflow invocation.",
     )
@@ -1760,3 +1760,11 @@ class FastAPIInvocations:
     ) -> InvocationJobsResponse:
         """An alias for `GET /api/invocations/{invocation_id}/jobs_summary`. `workflow_id` is ignored."""
         return self.invocation_jobs_summary(trans=trans, invocation_id=invocation_id)
+
+    @router.get("/api/invocations/{invocation_id}/metrics")
+    def get_invocation_metrics(
+        self,
+        invocation_id: InvocationIDPathParam,
+        trans: ProvidesHistoryContext = DependsOnTrans,
+    ) -> List[WorkflowJobMetric]:
+        return self.invocations_service.show_invocation_metrics(trans=trans, invocation_id=invocation_id)

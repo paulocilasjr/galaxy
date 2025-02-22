@@ -46,6 +46,7 @@ from galaxy.util.config_parsers import parse_allowlist_ips
 from galaxy.util.custom_logging import LOGLV_TRACE
 from galaxy.util.dynamic import HasDynamicProperties
 from galaxy.util.facts import get_facts
+from galaxy.util.hash_util import HashFunctionNameEnum
 from galaxy.util.properties import (
     read_properties_from_file,
     running_from_source,
@@ -69,7 +70,7 @@ DEFAULT_LOCALE_FORMAT = "%a %b %e %H:%M:%S %Y"
 ISO_DATETIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 GALAXY_APP_NAME = "galaxy"
-GALAXY_SCHEMAS_PATH = resource_path(__package__, "schemas")
+GALAXY_SCHEMAS_PATH = resource_path(__name__, "schemas")
 GALAXY_CONFIG_SCHEMA_PATH = GALAXY_SCHEMAS_PATH / "config_schema.yml"
 REPORTS_CONFIG_SCHEMA_PATH = GALAXY_SCHEMAS_PATH / "reports_config_schema.yml"
 TOOL_SHED_CONFIG_SCHEMA_PATH = GALAXY_SCHEMAS_PATH / "tool_shed_config_schema.yml"
@@ -114,6 +115,14 @@ LOGGING_CONFIG_DEFAULT: Dict[str, Any] = {
         "watchdog.observers.inotify_buffer": {
             "level": "INFO",
             "qualname": "watchdog.observers.inotify_buffer",
+        },
+        "py.warnings": {
+            "level": "ERROR",
+            "qualname": "py.warnings",
+        },
+        "celery.utils.functional": {
+            "level": "INFO",
+            "qualname": "celery.utils.functional",
         },
     },
     "filters": {
@@ -503,10 +512,10 @@ class BaseAppConfiguration(HasDynamicProperties):
             if not parent:  # base case: nothing else needs resolving
                 return path
             parent_path = resolve(parent)  # recursively resolve parent path
-            if path is not None:
+            if path:
                 path = os.path.join(parent_path, path)  # resolve path
             else:
-                path = parent_path  # or use parent path
+                log.warning("Trying to resolve path for the '%s' option but it's empty/None", key)
 
             setattr(self, key, path)  # update property
             _cache[key] = path  # cache it!
@@ -530,7 +539,7 @@ class BaseAppConfiguration(HasDynamicProperties):
             if self.is_set(key) and self.paths_to_check_against_root and key in self.paths_to_check_against_root:
                 self._check_against_root(key)
 
-    def _check_against_root(self, key):
+    def _check_against_root(self, key: str):
         def get_path(current_path, initial_path):
             # if path does not exist and was set as relative:
             if not self._path_exists(current_path) and not os.path.isabs(initial_path):
@@ -549,6 +558,8 @@ class BaseAppConfiguration(HasDynamicProperties):
             return current_path
 
         current_value = getattr(self, key)  # resolved path or list of resolved paths
+        if not current_value:
+            return
         if isinstance(current_value, list):
             initial_paths = listify(self._raw_config[key], do_strip=True)  # initial unresolved paths
             updated_paths = []
@@ -708,6 +719,7 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
     galaxy_data_manager_data_path: str
     galaxy_infrastructure_url: str
     hours_between_check: int
+    hash_function: HashFunctionNameEnum
     integrated_tool_panel_config: str
     involucro_path: str
     len_file_path: str
@@ -889,6 +901,13 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
         self.update_integrated_tool_panel = kwargs.get("update_integrated_tool_panel", True)
         self.galaxy_data_manager_data_path = self.galaxy_data_manager_data_path or self.tool_data_path
         self.tool_secret = kwargs.get("tool_secret", "")
+        if self.calculate_dataset_hash not in ("always", "upload", "never"):
+            raise ConfigurationError(
+                f"Unrecognized value for calculate_dataset_hash option: {self.calculate_dataset_hash}"
+            )
+        if self.hash_function not in HashFunctionNameEnum.__members__:
+            raise ConfigurationError(f"Unrecognized value for hash_function option: {self.hash_function}")
+        self.hash_function = HashFunctionNameEnum[self.hash_function]
         self.metadata_strategy = kwargs.get("metadata_strategy", "directory")
         self.use_remote_user = self.use_remote_user or self.single_user
         self.fetch_url_allowlist_ips = parse_allowlist_ips(listify(kwargs.get("fetch_url_allowlist")))
@@ -981,6 +1000,9 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
             # dependency resolution options are consumed via config_dict - so don't populate
             # self, populate config_dict
             self.config_dict["conda_mapping_files"] = [self.local_conda_mapping_file, _default_mapping]
+
+        if kwargs.get("conda_auto_init") is None:
+            self.config_dict["conda_auto_init"] = running_from_source
 
         if self.container_resolvers_config_file:
             self.container_resolvers_config_file = self._in_config_dir(self.container_resolvers_config_file)
@@ -1079,6 +1101,10 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
             )
 
         self._process_celery_config()
+
+        # load in the chat_prompts if openai api key is configured
+        if self.openai_api_key:
+            self._load_chat_prompts()
 
         self.pretty_datetime_format = expand_pretty_datetime_format(self.pretty_datetime_format)
         try:
@@ -1239,6 +1265,22 @@ class GalaxyAppConfiguration(BaseAppConfiguration, CommonConfigurationMixin):
 
         if self.file_source_temp_dir:
             self.file_source_temp_dir = os.path.abspath(self.file_source_temp_dir)
+
+    def _load_chat_prompts(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        chat_prompts_path = os.path.join(current_dir, "chat_prompts.json")
+
+        if os.path.exists(chat_prompts_path):
+            try:
+                with open(chat_prompts_path, encoding="utf-8") as file:
+                    data = json.load(file)
+                    self.chat_prompts = data.get("prompts", {})
+            except json.JSONDecodeError as e:
+                log.error(f"JSON decoding error in chat prompts file: {e}")
+            except Exception as e:
+                log.error(f"An error occurred while reading chat prompts file: {e}")
+        else:
+            log.warning(f"Chat prompts file not found at {chat_prompts_path}")
 
     def _process_celery_config(self):
         if self.celery_conf and self.celery_conf.get("result_backend") is None:

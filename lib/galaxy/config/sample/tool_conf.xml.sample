@@ -141,6 +141,7 @@
     <tool file="interactive/interactivetool_ethercalc.xml" />
     <tool file="interactive/interactivetool_guacamole_desktop.xml" />
     <tool file="interactive/interactivetool_hicbrowser.xml" />
+    <tool file="interactive/interactivetool_jupyter_notebook_1.0.1.xml" />
     <tool file="interactive/interactivetool_jupyter_notebook_1.0.0.xml" />
     <tool file="interactive/interactivetool_jupyter_notebook.xml" />
     <tool file="interactive/interactivetool_neo4j.xml" />
@@ -149,7 +150,15 @@
     <tool file="interactive/interactivetool_rstudio.xml" />
   </section>
   -->
-  <section name="MyTools" id="mTools">
-      <tool file='myTools/c_nomenclature_tool.xml' />
+  <section id="ludwig" name="Ludwig tools">
+    <tool file="ludwig/ludwig_autogenconfig.xml" />
+    <tool file="ludwig/ludwig_embeddings.xml" />
+    <tool file="ludwig/ludwig_evaluate.xml" />
+    <tool file="ludwig/ludwig_experiment.xml"/>
+    <tool file="ludwig/ludwig_hyperopt.xml" />
+    <tool file="ludwig/ludwig_predict.xml" />
+    <tool file="ludwig/ludwig_render_config.xml" />
+    <tool file="ludwig/ludwig_train.xml" />
+    <tool file="ludwig/ludwig_visualize.xml" />
   </section>
 </toolbox>

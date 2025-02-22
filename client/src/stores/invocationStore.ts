@@ -1,11 +1,17 @@
 import { defineStore } from "pinia";
+import { ref } from "vue";
 
 import { GalaxyApi } from "@/api";
 import { type InvocationJobsSummary, type InvocationStep, type WorkflowInvocation } from "@/api/invocations";
 import { type FetchParams, useKeyedCache } from "@/composables/keyedCache";
+import type { GraphStep } from "@/composables/useInvocationGraph";
 import { rethrowSimple } from "@/utils/simple-error";
 
+type GraphSteps = { [index: string]: GraphStep };
+
 export const useInvocationStore = defineStore("invocationStore", () => {
+    const graphStepsByStoreId = ref<{ [index: string]: GraphSteps }>({});
+
     async function fetchInvocationDetails(params: FetchParams): Promise<WorkflowInvocation> {
         const { data, error } = await GalaxyApi().GET("/api/invocations/{invocation_id}", {
             params: { path: { invocation_id: params.id } },
@@ -36,8 +42,24 @@ export const useInvocationStore = defineStore("invocationStore", () => {
         return data;
     }
 
-    const { getItemById: getInvocationById, fetchItemById: fetchInvocationForId } =
-        useKeyedCache<WorkflowInvocation>(fetchInvocationDetails);
+    async function cancelWorkflowScheduling(invocationId: string) {
+        const { data, error } = await GalaxyApi().DELETE("/api/invocations/{invocation_id}", {
+            params: {
+                path: { invocation_id: invocationId },
+            },
+        });
+        if (error) {
+            rethrowSimple(error);
+        }
+        storedInvocations.value[invocationId] = data;
+        return data;
+    }
+
+    const {
+        getItemById: getInvocationById,
+        fetchItemById: fetchInvocationForId,
+        storedItems: storedInvocations,
+    } = useKeyedCache<WorkflowInvocation>(fetchInvocationDetails);
 
     const { getItemById: getInvocationJobsSummaryById, fetchItemById: fetchInvocationJobsSummaryForId } =
         useKeyedCache<InvocationJobsSummary>(fetchInvocationJobsSummary);
@@ -52,5 +74,7 @@ export const useInvocationStore = defineStore("invocationStore", () => {
         fetchInvocationJobsSummaryForId,
         getInvocationStepById,
         fetchInvocationStepById,
+        cancelWorkflowScheduling,
+        graphStepsByStoreId,
     };
 });

@@ -1,5 +1,6 @@
 import logging
 import os
+import traceback
 from typing import (
     Any,
     Iterable,
@@ -141,7 +142,7 @@ def _description_from_tool_source(
                 "error": False,
             }
         )
-    except Exception as e:
+    except Exception:
         processed_test_dict = InvalidToolTestDict(
             {
                 "tool_id": tool_id,
@@ -149,7 +150,7 @@ def _description_from_tool_source(
                 "test_index": test_index,
                 "inputs": {},
                 "error": True,
-                "exception": unicodify(e),
+                "exception": unicodify(traceback.format_exc()),
                 "maxseconds": maxseconds,
             }
         )
@@ -341,7 +342,7 @@ class ParamContext:
         self.allow_unqualified_access = parent_context.allow_unqualified_access
 
     def for_state(self) -> str:
-        name = self.name if self.index is None else "%s_%d" % (self.name, self.index)
+        name = self.name if self.index is None else f"{self.name}_{self.index}"
         parent_for_state = self.parent_context.for_state()
         if parent_for_state:
             return f"{parent_for_state}|{name}"
@@ -357,11 +358,11 @@ class ParamContext:
         else:
             for parent_context_param in self.parent_context.param_names():
                 if self.index is not None:
-                    yield "%s|%s_%d" % (parent_context_param, self.name, self.index)
+                    yield f"{parent_context_param}|{self.name}_{self.index}"
                 else:
                     yield f"{parent_context_param}|{self.name}"
             if self.index is not None:
-                yield "%s_%d" % (self.name, self.index)
+                yield f"{self.name}_{self.index}"
             else:
                 yield self.name
 

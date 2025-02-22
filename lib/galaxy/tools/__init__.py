@@ -95,6 +95,7 @@ from galaxy.tool_util.provided_metadata import parse_tool_provided_metadata
 from galaxy.tool_util.toolbox import (
     AbstractToolBox,
     AbstractToolTagManager,
+    ToolLoadError,
     ToolSection,
 )
 from galaxy.tool_util.toolbox.views.sources import StaticToolBoxViewSources
@@ -134,7 +135,6 @@ from galaxy.tools.parameters.basic import (
     DataCollectionToolParameter,
     DataToolParameter,
     HiddenToolParameter,
-    ImplicitConversionRequired,
     SelectTagParameter,
     SelectToolParameter,
     ToolParameter,
@@ -153,6 +153,7 @@ from galaxy.tools.parameters.grouping import (
 )
 from galaxy.tools.parameters.input_translation import ToolInputTranslator
 from galaxy.tools.parameters.meta import expand_meta_parameters
+from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import workflow_building_modes
 from galaxy.tools.parameters.wrapped_json import json_wrap
 from galaxy.util import (
@@ -338,6 +339,7 @@ WORKFLOW_SAFE_TOOL_VERSION_UPDATES = {
     "__BUILD_LIST__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
     "__APPLY_RULES__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
     "__EXTRACT_DATASET__": safe_update(parse_version("1.0.0"), parse_version("1.0.1")),
+    "__RELABEL_FROM_FILE__": safe_update(parse_version("1.0.0"), parse_version("1.1.0")),
     "Grep1": safe_update(parse_version("1.0.1"), parse_version("1.0.4")),
     "Show beginning1": safe_update(parse_version("1.0.0"), parse_version("1.0.2")),
     "Show tail1": safe_update(parse_version("1.0.0"), parse_version("1.0.1")),
@@ -380,7 +382,10 @@ def create_tool_from_source(app, tool_source: ToolSource, config_file: Optional[
     elif tool_type := tool_source.parse_tool_type():
         ToolClass = tool_types.get(tool_type)
         if not ToolClass:
-            raise ValueError(f"Unrecognized tool type: {tool_type}")
+            if tool_type == "cwl":
+                raise ToolLoadError("Runtime support for CWL tools is not implemented currently")
+            else:
+                raise ToolLoadError(f"Parsed unrecognized tool type ({tool_type}) from tool")
     else:
         # Normal tool
         root = getattr(tool_source, "root", None)
@@ -1660,8 +1665,9 @@ class Tool(UsesDictVisibleKeys):
         # form when it changes
         for name in param.get_dependencies():
             # Let it throw exception, but give some hint what the problem might be
-            if name not in context:
-                log.error(f"Tool with id '{self.id}': Could not find dependency '{name}' of parameter '{param.name}'")
+            assert (
+                name in context
+            ), f"Tool with id '{self.id}': Could not find dependency '{name}' of parameter '{param.name}'"
             context[name].refresh_on_change = True
         return param
 
@@ -1832,7 +1838,9 @@ class Tool(UsesDictVisibleKeys):
         # Expand these out to individual parameters for given jobs (tool executions).
         expanded_incomings: List[ToolStateJobInstanceT]
         collection_info: Optional[MatchingCollections]
-        expanded_incomings, collection_info = expand_meta_parameters(request_context, self, incoming)
+        expanded_incomings, collection_info = expand_meta_parameters(
+            request_context, self, incoming, input_format=input_format
+        )
 
         self._ensure_expansion_is_valid(expanded_incomings, rerun_remap_job_id)
 
@@ -1900,16 +1908,20 @@ class Tool(UsesDictVisibleKeys):
                 simple_errors=False,
                 input_format=input_format,
             )
-            # If the tool provides a `validate_input` hook, call it.
-            validate_input = self.get_hook("validate_input")
-            if validate_input:
-                # hooks are so terrible ... this is specifically for https://github.com/galaxyproject/tools-devteam/blob/main/tool_collections/gops/basecoverage/operation_filter.py
-                legacy_non_dce_params = {
-                    k: v.hda if isinstance(v, model.DatasetCollectionElement) and v.hda else v
-                    for k, v in params.items()
-                }
-                validate_input(request_context, errors, legacy_non_dce_params, self.inputs)
+            self._handle_validate_input_hook(request_context, params, errors)
         return params, errors
+
+    def _handle_validate_input_hook(
+        self, request_context, params: ToolStateJobInstancePopulatedT, errors: ParameterValidationErrorsT
+    ):
+        # If the tool provides a `validate_input` hook, call it.
+        validate_input = self.get_hook("validate_input")
+        if validate_input:
+            # hooks are so terrible ... this is specifically for https://github.com/galaxyproject/tools-devteam/blob/main/tool_collections/gops/basecoverage/operation_filter.py
+            legacy_non_dce_params = {
+                k: v.hda if isinstance(v, model.DatasetCollectionElement) and v.hda else v for k, v in params.items()
+            }
+            validate_input(request_context, errors, legacy_non_dce_params, self.inputs)
 
     def completed_jobs(
         self, trans, use_cached_job: bool, all_params: List[ToolStateJobInstancePopulatedT]
@@ -2679,63 +2691,13 @@ class Tool(UsesDictVisibleKeys):
         """
         Populates the tool model consumed by the client form builder.
         """
-        other_values = ExpressionContext(state_inputs, other_values)
-        for input_index, input in enumerate(inputs.values()):
-            tool_dict = None
-            group_state = state_inputs.get(input.name, {})
-            if input.type == "repeat":
-                tool_dict = input.to_dict(request_context)
-                group_size = len(group_state)
-                tool_dict["cache"] = [None] * group_size
-                group_cache: List[List[str]] = tool_dict["cache"]
-                for i in range(group_size):
-                    group_cache[i] = []
-                    self.populate_model(request_context, input.inputs, group_state[i], group_cache[i], other_values)
-            elif input.type == "conditional":
-                tool_dict = input.to_dict(request_context)
-                if "test_param" in tool_dict:
-                    test_param = tool_dict["test_param"]
-                    test_param["value"] = input.test_param.value_to_basic(
-                        group_state.get(
-                            test_param["name"], input.test_param.get_initial_value(request_context, other_values)
-                        ),
-                        self.app,
-                    )
-                    test_param["text_value"] = input.test_param.value_to_display_text(test_param["value"])
-                    for i in range(len(tool_dict["cases"])):
-                        current_state = {}
-                        if i == group_state.get("__current_case__"):
-                            current_state = group_state
-                        self.populate_model(
-                            request_context,
-                            input.cases[i].inputs,
-                            current_state,
-                            tool_dict["cases"][i]["inputs"],
-                            other_values,
-                        )
-            elif input.type == "section":
-                tool_dict = input.to_dict(request_context)
-                self.populate_model(request_context, input.inputs, group_state, tool_dict["inputs"], other_values)
-            else:
-                try:
-                    initial_value = input.get_initial_value(request_context, other_values)
-                    tool_dict = input.to_dict(request_context, other_values=other_values)
-                    tool_dict["value"] = input.value_to_basic(
-                        state_inputs.get(input.name, initial_value), self.app, use_security=True
-                    )
-                    tool_dict["default_value"] = input.value_to_basic(initial_value, self.app, use_security=True)
-                    tool_dict["text_value"] = input.value_to_display_text(tool_dict["value"])
-                except ImplicitConversionRequired:
-                    tool_dict = input.to_dict(request_context)
-                    # This hack leads client to display a text field
-                    tool_dict["textable"] = True
-                except Exception:
-                    tool_dict = input.to_dict(request_context)
-                    log.exception("tools::to_json() - Skipping parameter expansion '%s'", input.name)
-            if input_index >= len(group_inputs):
-                group_inputs.append(tool_dict)
-            else:
-                group_inputs[input_index] = tool_dict
+        populate_model(
+            request_context=request_context,
+            inputs=inputs,
+            state_inputs=state_inputs,
+            group_inputs=group_inputs,
+            other_values=other_values,
+        )
 
     def _map_source_to_history(self, trans, tool_inputs, params):
         # Need to remap dataset parameters. Job parameters point to original
@@ -3227,9 +3189,8 @@ class InteractiveTool(Tool):
     produces_entry_points = True
 
     def __init__(self, config_file, tool_source, app, **kwd):
-        assert app.config.interactivetools_enable, ValueError(
-            "Trying to load an InteractiveTool, but InteractiveTools are not enabled."
-        )
+        if not app.config.interactivetools_enable:
+            raise ToolLoadError("Trying to load an InteractiveTool, but InteractiveTools are not enabled.")
         super().__init__(config_file, tool_source, app, **kwd)
 
     def __remove_interactivetool_by_job(self, job):
@@ -3914,14 +3875,13 @@ class HarmonizeTool(DatabaseOperationTool):
         final_sorted_identifiers = [
             element.element_identifier for element in elements1 if element.element_identifier in old_elements2_dict
         ]
-        # Raise Exception if it is empty
         if len(final_sorted_identifiers) == 0:
             # Create empty collections:
             output_collections.create_collection(
-                next(iter(self.outputs.values())), "output1", elements={}, propagate_hda_tags=False
+                self.outputs["output1"], "output1", elements={}, propagate_hda_tags=False
             )
             output_collections.create_collection(
-                next(iter(self.outputs.values())), "output2", elements={}, propagate_hda_tags=False
+                self.outputs["output2"], "output2", elements={}, propagate_hda_tags=False
             )
             return
 
@@ -3939,7 +3899,7 @@ class HarmonizeTool(DatabaseOperationTool):
             self._add_datasets_to_history(history, new_elements.values())
             # Create collections:
             output_collections.create_collection(
-                next(iter(self.outputs.values())), output_label, elements=new_elements, propagate_hda_tags=False
+                self.outputs[output_label], output_label, elements=new_elements, propagate_hda_tags=False
             )
 
         # Create outputs:
@@ -3974,24 +3934,38 @@ class RelabelFromFileTool(DatabaseOperationTool):
             new_labels = fh.readlines(1024 * 1000000)
         if strict and len(hdca.collection.elements) != len(new_labels):
             raise exceptions.MessageException("Relabel mapping file contains incorrect number of identifiers")
-        if how_type == "tabular":
-            # We have a tabular file, where the first column is an existing element identifier,
-            # and the second column is the new element identifier.
+        if how_type in ["tabular", "tabular_extended"]:
+            # We have a tabular file, where one column lists existing element identifiers,
+            # another one the corresponding new element identifiers.
+            # In tabular_extended mode the two columns ("from" and "to") are user-specified,
+            # while in simple tabular mode they default to the first and second column and
+            # these must be the only two columns in the input.
+            from_index = int(incoming["how"].get("from", 1)) - 1
+            to_index = int(incoming["how"].get("to", 2)) - 1
+            if from_index < 0 or to_index < 0:
+                raise exceptions.MessageException(
+                    "Column < 1 specified for relabel mapping file. Column count starts at 1."
+                )
             new_labels_dict = {}
-            source_new_label = (line.strip().split("\t") for line in new_labels)
-            for i, label_pair in enumerate(source_new_label):
-                if not len(label_pair) == 2:
-                    raise exceptions.MessageException(
-                        f"Relabel mapping file line {i + 1} contains {len(label_pair)} columns, but 2 are required"
-                    )
-                new_labels_dict[label_pair[0]] = label_pair[1]
+            try:
+                for i, line in enumerate(new_labels, 1):
+                    cols = line.strip().split("\t")
+                    if how_type == "tabular" and len(cols) != 2:
+                        raise exceptions.MessageException(
+                            f"Relabel mapping file contains {len(cols)} columns on line {i}, but 2 are required"
+                        )
+                    new_labels_dict[cols[from_index]] = cols[to_index]
+            except IndexError:
+                raise exceptions.MessageException(
+                    f"Specified column number > number of columns [{len(cols)}] on line {i} of relabel mapping file."
+                )
             for dce in hdca.collection.elements:
                 dce_object = dce.element_object
                 element_identifier = dce.element_identifier
                 default = None if strict else element_identifier
                 new_label = new_labels_dict.get(element_identifier, default)
                 if not new_label:
-                    raise exceptions.MessageException(f"Failed to find new label for identifier [{element_identifier}]")
+                    raise exceptions.MessageException(f"Failed to find original identifier [{element_identifier}]")
                 add_copied_value_to_new_elements(new_label, dce_object)
         else:
             # If new_labels_dataset_assoc is not a two-column tabular dataset we label with the current line of the dataset

@@ -509,8 +509,9 @@
 :Description:
     Set to true to instruct Galaxy to install Conda from the web
     automatically if it cannot find a local copy and conda_exec is not
-    configured.
-:Default: ``true``
+    configured. The default is true if running Galaxy from source, and
+    false if running from installed packages.
+:Default: ``None``
 :Type: bool
 
 
@@ -4718,6 +4719,33 @@
 :Type: float
 
 
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+``calculate_dataset_hash``
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+:Description:
+    In which cases Galaxy should calculate a hash for a new dataset.
+    Dataset hashes can be used by the Galaxy job cache/search to check
+    if job inputs match. Setting the 'enable_celery_tasks' option to
+    true is also required for dataset hash calculation. Possible
+    values are: 'always', 'upload' (the default), 'never'. If set to
+    'upload', the hash is calculated only for the outputs of upload
+    jobs.
+:Default: ``upload``
+:Type: str
+
+
+~~~~~~~~~~~~~~~~~
+``hash_function``
+~~~~~~~~~~~~~~~~~
+
+:Description:
+    Hash function to use if 'calculate_dataset_hash' is enabled.
+    Possible values are: 'md5', 'sha1', 'sha256', 'sha512'
+:Default: ``sha256``
+:Type: str
+
+
 ~~~~~~~~~~~~~~~~~~~~~
 ``metadata_strategy``
 ~~~~~~~~~~~~~~~~~~~~~
@@ -5124,7 +5152,7 @@
     'deferred' are "materialized" (or undeferred) by the workflow
     scheduler. This might be a lengthy process. Setting this to 'True'
     will place the invocation back in the queue after materialization
-    before scheduling the workflow so it is less  likely to starve
+    before scheduling the workflow so it is less likely to starve
     other workflow scheduling. Ideally, Galaxy would allow more fine
     grain control of handlers but until then, this provides a way to
     tip the balance between "doing more work" and "being more fair".
@@ -5363,6 +5391,27 @@
     fields will be used)
 :Default: ``-1``
 :Type: int
+
+
+~~~~~~~~~~~~~~~~~~
+``openai_api_key``
+~~~~~~~~~~~~~~~~~~
+
+:Description:
+    API key for OpenAI (https://openai.com/) to enable the wizard (or
+    more?)
+:Default: ``None``
+:Type: str
+
+
+~~~~~~~~~~~~~~~~
+``openai_model``
+~~~~~~~~~~~~~~~~
+
+:Description:
+    OpenAI model to enable the wizard.
+:Default: ``gpt-4o``
+:Type: str
 
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

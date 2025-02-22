@@ -1,9 +1,7 @@
 import sys
 from functools import partial
 from typing import (
-    Any,
     Callable,
-    Dict,
     List,
     Optional,
 )
@@ -15,26 +13,30 @@ from galaxy.exceptions import RequestParameterInvalidException
 from galaxy.tool_util.parameters import (
     decode,
     encode,
+    RawStateDict,
     RequestInternalToolState,
     RequestToolState,
     ToolParameterBundleModel,
     validate_internal_job,
+    validate_internal_landing_request,
     validate_internal_request,
     validate_internal_request_dereferenced,
+    validate_landing_request,
     validate_request,
     validate_test_case,
     validate_workflow_step,
     validate_workflow_step_linked,
+    ValidationFunctionT,
 )
-from galaxy.tool_util.parameters.json import to_json_schema_string
+from galaxy.tool_util.parameters.json import (
+    to_json_schema,
+    to_json_schema_string,
+)
 from galaxy.tool_util.unittest_utils.parameters import (
     parameter_bundle_for_file,
     parameter_bundle_for_framework_tool,
 )
 from galaxy.util.resources import resource_string
-
-RawStateDict = Dict[str, Any]
-
 
 if sys.version_info < (3, 8):  # noqa: UP036
     pytest.skip(reason="Pydantic tool parameter models require python3.8 or higher", allow_module_level=True)
@@ -42,7 +44,7 @@ if sys.version_info < (3, 8):  # noqa: UP036
 
 def specification_object():
     try:
-        yaml_str = resource_string(__package__, "parameter_specification.yml")
+        yaml_str = resource_string(__name__, "parameter_specification.yml")
     except AttributeError:
         # hack for the main() function below where this file is interpreted as part of the
         # Galaxy tree.
@@ -55,7 +57,7 @@ def framework_tool_checks():
     # There is something beautiful about a targeted tool for every parameter feature but realistically
     # we've been doing a version of the for a decade with tool tests and we can leverage those also.
     try:
-        yaml_str = resource_string(__package__, "framework_tool_checks.yml")
+        yaml_str = resource_string(__name__, "framework_tool_checks.yml")
     except AttributeError:
         # hack for the main() function below where this file is interpreted as part of the
         # Galaxy tree.
@@ -100,6 +102,10 @@ def _test_file(file: str, specification=None, parameter_bundle: Optional[ToolPar
         "request_internal_invalid": _assert_internal_requests_invalid,
         "request_internal_dereferenced_valid": _assert_internal_requests_dereferenced_validate,
         "request_internal_dereferenced_invalid": _assert_internal_requests_dereferenced_invalid,
+        "landing_request_valid": _assert_landing_requests_validate,
+        "landing_request_invalid": _assert_landing_requests_invalid,
+        "landing_request_internal_valid": _assert_internal_landing_requests_validate,
+        "landing_request_internal_invalid": _assert_internal_landing_requests_invalid,
         "job_internal_valid": _assert_internal_jobs_validate,
         "job_internal_invalid": _assert_internal_jobs_invalid,
         "test_case_xml_valid": _assert_test_cases_validate,
@@ -126,139 +132,54 @@ def _for_each(test: Callable, parameters: ToolParameterBundleModel, requests: Li
         test(parameters, request)
 
 
-def _assert_request_validates(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    try:
-        validate_request(parameters, request)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate request {request}. {e}")
+def model_assertion_function_factory(validate_function: ValidationFunctionT, what: str):
+
+    def _assert_validates(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
+        try:
+            validate_function(parameters, request)
+        except RequestParameterInvalidException as e:
+            raise AssertionError(f"Parameters {parameters} failed to validate {what} {request}. {e}")
+
+    def _assert_invalid(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
+        exc = None
+        try:
+            validate_function(parameters, request)
+        except RequestParameterInvalidException as e:
+            exc = e
+
+        if exc is None:
+            raise AssertionError(
+                f"Parameters {parameters} didn't result in validation error on {what} {request} as expected."
+            )
+
+    return _assert_validates, _assert_invalid
 
 
-def _assert_request_invalid(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_request(parameters, request)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on request {request} as expected."
-
-
-def _assert_internal_request_validates(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    try:
-        validate_internal_request(parameters, request)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate internal request {request}. {e}")
-
-
-def _assert_internal_request_invalid(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_internal_request(parameters, request)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on internal request {request} as expected."
-
-
-def _assert_internal_request_dereferenced_validates(
-    parameters: ToolParameterBundleModel, request: RawStateDict
-) -> None:
-    try:
-        validate_internal_request_dereferenced(parameters, request)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate dereferenced internal request {request}. {e}")
-
-
-def _assert_internal_request_dereferenced_invalid(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_internal_request_dereferenced(parameters, request)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on dereferenced internal request {request} as expected."
-
-
-def _assert_internal_job_validates(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    try:
-        validate_internal_job(parameters, request)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate internal job description {request}. {e}")
-
-
-def _assert_internal_job_invalid(parameters: ToolParameterBundleModel, request: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_internal_job(parameters, request)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on internal job description {request} as expected."
-
-
-def _assert_test_case_validates(parameters: ToolParameterBundleModel, test_case: RawStateDict) -> None:
-    try:
-        validate_test_case(parameters, test_case)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate test_case {test_case}. {e}")
-
-
-def _assert_test_case_invalid(parameters: ToolParameterBundleModel, test_case: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_test_case(parameters, test_case)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on test_case {test_case} as expected."
-
-
-def _assert_workflow_step_validates(parameters: ToolParameterBundleModel, workflow_step: RawStateDict) -> None:
-    try:
-        validate_workflow_step(parameters, workflow_step)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(f"Parameters {parameters} failed to validate workflow step {workflow_step}. {e}")
-
-
-def _assert_workflow_step_invalid(parameters: ToolParameterBundleModel, workflow_step: RawStateDict) -> None:
-    exc = None
-    try:
-        validate_workflow_step(parameters, workflow_step)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on workflow step {workflow_step} as expected."
-
-
-def _assert_workflow_step_linked_validates(
-    parameters: ToolParameterBundleModel, workflow_step_linked: RawStateDict
-) -> None:
-    try:
-        validate_workflow_step_linked(parameters, workflow_step_linked)
-    except RequestParameterInvalidException as e:
-        raise AssertionError(
-            f"Parameters {parameters} failed to validate linked workflow step {workflow_step_linked}. {e}"
-        )
-
-
-def _assert_workflow_step_linked_invalid(
-    parameters: ToolParameterBundleModel, workflow_step_linked: RawStateDict
-) -> None:
-    exc = None
-    try:
-        validate_workflow_step_linked(parameters, workflow_step_linked)
-    except RequestParameterInvalidException as e:
-        exc = e
-    assert (
-        exc is not None
-    ), f"Parameters {parameters} didn't result in validation error on linked workflow step {workflow_step_linked} as expected."
-
+_assert_request_validates, _assert_request_invalid = model_assertion_function_factory(validate_request, "request")
+_assert_internal_request_validates, _assert_internal_request_invalid = model_assertion_function_factory(
+    validate_internal_request, "internal request"
+)
+_assert_internal_request_dereferenced_validates, _assert_internal_request_dereferenced_invalid = (
+    model_assertion_function_factory(validate_internal_request_dereferenced, "dereferenced internal request")
+)
+_assert_internal_job_validates, _assert_internal_job_invalid = model_assertion_function_factory(
+    validate_internal_job, "internal job description"
+)
+_assert_test_case_validates, _assert_test_case_invalid = model_assertion_function_factory(
+    validate_test_case, "XML derived test case"
+)
+_assert_workflow_step_validates, _assert_workflow_step_invalid = model_assertion_function_factory(
+    validate_workflow_step, "workflow step tool state (unlinked)"
+)
+_assert_workflow_step_linked_validates, _assert_workflow_step_linked_invalid = model_assertion_function_factory(
+    validate_workflow_step_linked, "linked workflow step tool state"
+)
+_assert_landing_request_validates, _assert_landing_request_invalid = model_assertion_function_factory(
+    validate_landing_request, "landing request"
+)
+_assert_internal_landing_request_validates, _assert_internal_landing_request_invalid = model_assertion_function_factory(
+    validate_internal_landing_request, " internallanding request"
+)
 
 _assert_requests_validate = partial(_for_each, _assert_request_validates)
 _assert_requests_invalid = partial(_for_each, _assert_request_invalid)
@@ -274,6 +195,10 @@ _assert_workflow_steps_validate = partial(_for_each, _assert_workflow_step_valid
 _assert_workflow_steps_invalid = partial(_for_each, _assert_workflow_step_invalid)
 _assert_workflow_steps_linked_validate = partial(_for_each, _assert_workflow_step_linked_validates)
 _assert_workflow_steps_linked_invalid = partial(_for_each, _assert_workflow_step_linked_invalid)
+_assert_landing_requests_validate = partial(_for_each, _assert_landing_request_validates)
+_assert_landing_requests_invalid = partial(_for_each, _assert_landing_request_invalid)
+_assert_internal_landing_requests_validate = partial(_for_each, _assert_internal_landing_request_validates)
+_assert_internal_landing_requests_invalid = partial(_for_each, _assert_internal_landing_request_invalid)
 
 
 def decode_val(val: str) -> int:
@@ -301,7 +226,11 @@ def test_decode_gx_int():
 def test_json_schema_for_conditional():
     input_bundle = parameter_bundle_for_file("gx_conditional_boolean")
     tool_state = RequestToolState.parameter_model_for(input_bundle)
-    print(to_json_schema_string(tool_state))
+    json_schema = to_json_schema(tool_state)
+    assert json_schema["$defs"]["When_test_parameter_False"]["properties"]["test_parameter"]["const"] is False
+    assert json_schema["$defs"]["When_test_parameter_True"]["properties"]["test_parameter"]["const"] is True
+    assert "test_parameter" not in json_schema["$defs"]["When_test_parameter___absent"]["properties"]
+    assert to_json_schema_string(tool_state)
 
 
 def test_encode_gx_data():
@@ -322,7 +251,7 @@ if __name__ == "__main__":
     parameter_models_json = {}
     for file in parameter_spec.keys():
         tool_parameter_model = parameter_bundle_for_file(file)
-        parameter_models_json[file] = tool_parameter_model.dict()
+        parameter_models_json[file] = tool_parameter_model.model_dump()
     yaml_str = yaml.safe_dump(parameter_models_json)
     with open("client/src/components/Tool/parameter_models.yml", "w") as f:
         f.write("# auto generated file for JavaScript testing, do not modify manually\n")

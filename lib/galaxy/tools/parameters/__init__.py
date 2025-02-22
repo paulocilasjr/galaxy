@@ -31,6 +31,7 @@ from .grouping import (
 )
 from .workflow_utils import (
     is_runtime_value,
+    NO_REPLACEMENT,
     runtime_to_json,
 )
 from .wrapped import flat_to_nested_state
@@ -62,6 +63,8 @@ def visit_input_values(
     context=None,
     no_replacement_value=REPLACE_ON_TRUTHY,
     replace_optional_connections=False,
+    allow_case_inference=False,
+    unset_value=None,
 ):
     """
     Given a tools parameter definition (`inputs`) and a specific set of
@@ -158,7 +161,7 @@ def visit_input_values(
     """
 
     def callback_helper(input, input_values, name_prefix, label_prefix, parent_prefix, context=None, error=None):
-        value = input_values.get(input.name)
+        value = input_values.get(input.name, unset_value)
         args = {
             "input": input,
             "parent": input_values,
@@ -172,30 +175,62 @@ def visit_input_values(
         if input.name not in input_values:
             args["error"] = f"No value found for '{args.get('prefixed_label')}'."
         new_value = callback(**args)
+
+        # is this good enough ? feels very ugh
+        if new_value == [no_replacement_value]:
+            # Single unspecified value in multiple="true" input with a single null input, pretend it's a singular value
+            new_value = no_replacement_value
+        if isinstance(new_value, list):
+            # Maybe mixed input, I guess tool defaults don't really make sense here ?
+            # Would e.g. be default dataset in multiple="true" input, you wouldn't expect the default to be inserted
+            # if other inputs are connected and provided.
+            new_value = [item if not item == no_replacement_value else None for item in new_value]
+
         if no_replacement_value is REPLACE_ON_TRUTHY:
             replace = bool(new_value)
         else:
             replace = new_value != no_replacement_value
         if replace:
             input_values[input.name] = new_value
-        elif replace_optional_connections and is_runtime_value(value) and hasattr(input, "value"):
-            input_values[input.name] = input.value
+        elif replace_optional_connections:
+            # Only used in workflow context
+            has_default = hasattr(input, "value")
+            if new_value is value is NO_REPLACEMENT or is_runtime_value(value):
+                # NO_REPLACEMENT means value was connected but left unspecified
+                if has_default:
+                    # Use default if we have one
+                    input_values[input.name] = input.value
+                else:
+                    # Should fail if input is not optional and does not have default value
+                    # Effectively however depends on parameter implementation.
+                    # We might want to raise an exception here, instead of depending on a tool parameter value error.
+                    input_values[input.name] = None
 
     def get_current_case(input, input_values):
+        test_parameter = input.test_param
+        test_parameter_name = test_parameter.name
         try:
-            return input.get_current_case(input_values[input.test_param.name])
+            if test_parameter_name not in input_values and allow_case_inference:
+                return input.get_current_case(test_parameter.get_initial_value(None, input_values))
+            else:
+                return input.get_current_case(input_values[test_parameter_name])
         except (KeyError, ValueError):
             return -1
 
     context = ExpressionContext(input_values, context)
-    payload = {"context": context, "no_replacement_value": no_replacement_value}
+    payload = {
+        "context": context,
+        "no_replacement_value": no_replacement_value,
+        "allow_case_inference": allow_case_inference,
+        "unset_value": unset_value,
+    }
     for input in inputs.values():
         if isinstance(input, Repeat) or isinstance(input, UploadDataset):
             values = input_values[input.name] = input_values.get(input.name, [])
             for i, d in enumerate(values):
                 d["__index__"] = i
-                new_name_prefix = name_prefix + "%s_%d|" % (input.name, i)
-                new_label_prefix = label_prefix + "%s %d > " % (input.title, i + 1)
+                new_name_prefix = name_prefix + f"{input.name}_{i}|"
+                new_label_prefix = label_prefix + f"{input.title} {i + 1} > "
                 visit_input_values(
                     input.inputs,
                     d,
@@ -344,7 +379,7 @@ def params_to_incoming(incoming, inputs, input_values, app, name_prefix=""):
         if isinstance(input, Repeat) or isinstance(input, UploadDataset):
             for d in input_values[input.name]:
                 index = d["__index__"]
-                new_name_prefix = name_prefix + "%s_%d|" % (input.name, index)
+                new_name_prefix = name_prefix + f"{input.name}_{index}|"
                 params_to_incoming(incoming, input.inputs, d, app, new_name_prefix)
         elif isinstance(input, Conditional):
             values = input_values[input.name]
@@ -389,53 +424,6 @@ def populate_state(
 ):
     """
     Populates nested state dict from incoming parameter values.
-    >>> from galaxy.util import XML
-    >>> from galaxy.util.bunch import Bunch
-    >>> from galaxy.tools.parameters.basic import TextToolParameter, BooleanToolParameter
-    >>> from galaxy.tools.parameters.grouping import Repeat
-    >>> trans = Bunch(workflow_building_mode=False)
-    >>> a = TextToolParameter(None, XML('<param name="a"/>'))
-    >>> b = Repeat('b')
-    >>> b.min = 0
-    >>> b.max = 1
-    >>> c = TextToolParameter(None, XML('<param name="c"/>'))
-    >>> d = Repeat('d')
-    >>> d.min = 0
-    >>> d.max = 1
-    >>> e = TextToolParameter(None, XML('<param name="e"/>'))
-    >>> f = Conditional('f')
-    >>> g = BooleanToolParameter(None, XML('<param name="g"/>'))
-    >>> h = TextToolParameter(None, XML('<param name="h"/>'))
-    >>> i = TextToolParameter(None, XML('<param name="i"/>'))
-    >>> b.inputs = dict([('c', c), ('d', d)])
-    >>> d.inputs = dict([('e', e), ('f', f)])
-    >>> f.test_param = g
-    >>> f.cases = [Bunch(value='true', inputs= { 'h': h }), Bunch(value='false', inputs= { 'i': i })]
-    >>> inputs = dict([('a',a),('b',b)])
-    >>> flat = dict([('a', 1), ('b_0|c', 2), ('b_0|d_0|e', 3), ('b_0|d_0|f|h', 4), ('b_0|d_0|f|g', True)])
-    >>> state = {}
-    >>> populate_state(trans, inputs, flat, state, check=False)
-    >>> print(state['a'])
-    1
-    >>> print(state['b'][0]['c'])
-    2
-    >>> print(state['b'][0]['d'][0]['e'])
-    3
-    >>> print(state['b'][0]['d'][0]['f']['h'])
-    4
-    >>> # now test with input_format='21.01'
-    >>> nested = {'a': 1, 'b': [{'c': 2, 'd': [{'e': 3, 'f': {'h': 4, 'g': True}}]}]}
-    >>> state_new = {}
-    >>> populate_state(trans, inputs, nested, state_new, check=False, input_format='21.01')
-    >>> print(state_new['a'])
-    1
-    >>> print(state_new['b'][0]['c'])
-    2
-    >>> print(state_new['b'][0]['d'][0]['e'])
-    3
-    >>> print(state_new['b'][0]['d'][0]['f']['h'])
-    4
-
     """
     if errors is None:
         errors = {}
@@ -458,16 +446,15 @@ def populate_state(
             group_state = state[input.name]
             if input.type == "repeat":
                 repeat_input = cast(Repeat, input)
-                if (
-                    len(incoming[repeat_input.name]) > repeat_input.max
-                    or len(incoming[repeat_input.name]) < repeat_input.min
+                repeat_name = repeat_input.name
+                repeat_incoming = incoming.get(repeat_name) or []
+                if repeat_incoming and (
+                    len(repeat_incoming) > repeat_input.max or len(repeat_incoming) < repeat_input.min
                 ):
-                    errors[repeat_input.name] = (
-                        "The number of repeat elements is outside the range specified by the tool."
-                    )
+                    errors[repeat_name] = "The number of repeat elements is outside the range specified by the tool."
                 else:
                     del group_state[:]
-                    for rep in incoming[repeat_input.name]:
+                    for rep in repeat_incoming:
                         new_state: ToolStateJobInstancePopulatedT = {}
                         group_state.append(new_state)
                         repeat_errors: ParameterValidationErrorsT = {}
@@ -501,10 +488,13 @@ def populate_state(
                         current_case = conditional_input.get_current_case(value)
                         group_state = state[conditional_input.name] = {}
                         cast_errors: ParameterValidationErrorsT = {}
+                        incoming_for_conditional = cast(
+                            ToolStateJobInstanceT, incoming.get(conditional_input.name) or {}
+                        )
                         populate_state(
                             request_context,
                             conditional_input.cases[current_case].inputs,
-                            cast(ToolStateJobInstanceT, incoming.get(conditional_input.name)),
+                            incoming_for_conditional,
                             group_state,
                             cast_errors,
                             context=context,
@@ -522,10 +512,11 @@ def populate_state(
             elif input.type == "section":
                 section_input = cast(Section, input)
                 section_errors: ParameterValidationErrorsT = {}
+                incoming_for_state = cast(ToolStateJobInstanceT, incoming.get(section_input.name) or {})
                 populate_state(
                     request_context,
                     section_input.inputs,
-                    cast(ToolStateJobInstanceT, incoming.get(section_input.name)),
+                    incoming_for_state,
                     group_state,
                     section_errors,
                     context=context,
@@ -577,7 +568,7 @@ def _populate_state_legacy(
             rep_index = 0
             del group_state[:]
             while True:
-                rep_prefix = "%s_%d" % (key, rep_index)
+                rep_prefix = f"{key}_{rep_index}"
                 rep_min_default = repeat_input.default if repeat_input.default > repeat_input.min else repeat_input.min
                 if (
                     not any(incoming_key.startswith(rep_prefix) for incoming_key in incoming.keys())
@@ -664,7 +655,7 @@ def _populate_state_legacy(
                 group_state.append(new_state_upload)
             for rep_index, rep_state in enumerate(group_state):
                 rep_index = rep_state.get("__index__", rep_index)
-                rep_prefix = "%s_%d|" % (key, rep_index)
+                rep_prefix = f"{key}_{rep_index}|"
                 _populate_state_legacy(
                     request_context,
                     dataset_input.inputs,

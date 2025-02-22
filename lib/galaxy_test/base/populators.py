@@ -136,14 +136,16 @@ FILE_MD5 = "37b59762b59fff860460522d271bc111"
 CWL_TOOL_DIRECTORY = os.path.join(galaxy_root_path, "test", "functional", "tools", "cwl_tools")
 
 # Simple workflow that takes an input and call cat wrapper on it.
-workflow_str = resource_string(__package__, "data/test_workflow_1.ga")
+workflow_str = resource_string(__name__, "data/test_workflow_1.ga")
 # Simple workflow that takes an input and filters with random lines twice in a
 # row - first grabbing 8 lines at random and then 6.
-workflow_random_x2_str = resource_string(__package__, "data/test_workflow_2.ga")
+workflow_random_x2_str = resource_string(__name__, "data/test_workflow_2.ga")
 
 DEFAULT_TIMEOUT = 60  # Secs to wait for state to turn ok
 
 SKIP_FLAKEY_TESTS_ON_ERROR = os.environ.get("GALAXY_TEST_SKIP_FLAKEY_TESTS_ON_ERROR", None)
+
+PRIVATE_ROLE_TYPE = "private"
 
 
 def flakey(method):
@@ -1023,9 +1025,7 @@ class BaseDatasetPopulator(BasePopulator):
     def describe_tool_execution(self, tool_id: str) -> "DescribeToolExecution":
         return DescribeToolExecution(self, tool_id)
 
-    def materialize_dataset_instance(
-        self, history_id: str, id: str, source: str = "hda", validate_hashes: bool = False
-    ):
+    def materialize_dataset_instance(self, history_id: str, id: str, source: str = "hda"):
         payload: Dict[str, Any]
         if source == "ldda":
             url = f"histories/{history_id}/materialize"
@@ -1036,8 +1036,6 @@ class BaseDatasetPopulator(BasePopulator):
         else:
             url = f"histories/{history_id}/contents/datasets/{id}/materialize"
             payload = {}
-        if validate_hashes:
-            payload["validate_hashes"] = True
         create_response = self._post(url, payload, json=True)
         api_asserts.assert_status_code_is_ok(create_response)
         create_response_json = create_response.json()
@@ -1277,11 +1275,13 @@ class BaseDatasetPopulator(BasePopulator):
         return users[0]["id"]
 
     def user_private_role_id(self) -> str:
-        user_email = self.user_email()
-        roles = self.get_roles()
-        users_roles = [r for r in roles if r["name"] == user_email]
-        assert len(users_roles) == 1, f"Did not find exactly one role for email {user_email} - {users_roles}"
-        role = users_roles[0]
+        userid = self.user_id()
+        response = self._get(f"users/{userid}/roles", admin=True)
+        assert response.status_code == 200
+        roles = response.json()
+        private_roles = [r for r in roles if r["type"] == PRIVATE_ROLE_TYPE]
+        assert len(private_roles) == 1, f"Did not find exactly one private role for user {userid} - {private_roles}"
+        role = private_roles[0]
         assert "id" in role, role
         return role["id"]
 
@@ -1397,6 +1397,13 @@ class BaseDatasetPopulator(BasePopulator):
                 return validated_state
 
         return wait_on(validated, "dataset validation")
+
+    def wait_for_dataset_hashes(self, history_id: str, dataset_id: str):
+        def dataset_hashes_present():
+            hda = self.get_history_dataset_details(history_id=history_id, dataset_id=dataset_id)
+            return hda["hashes"] or None
+
+        return wait_on(dataset_hashes_present, "dataset hash presence")
 
     def setup_history_for_export_testing(self, history_name):
         using_requirement("new_history")
@@ -1814,7 +1821,7 @@ class BaseWorkflowPopulator(BasePopulator):
     def load_workflow_from_resource(self, name: str, filename: Optional[str] = None) -> dict:
         if filename is None:
             filename = f"data/{name}.ga"
-        content = resource_string(__package__, filename)
+        content = resource_string(__name__, filename)
         return self.load_workflow(name, content=content)
 
     def simple_workflow(self, name: str, **create_kwds) -> str:
@@ -1904,6 +1911,8 @@ class BaseWorkflowPopulator(BasePopulator):
                 invocations = self.history_invocations(history_id)
                 if len(invocations) == expected_invocation_count:
                     return True
+                elif len(invocations) > expected_invocation_count:
+                    raise AssertionError("More than the expect number of invocations found in workflow")
 
             wait_on(invocation_count, f"{expected_invocation_count} history invocations")
         for invocation in self.history_invocations(history_id):
@@ -1996,7 +2005,7 @@ class BaseWorkflowPopulator(BasePopulator):
         url = f"workflows/{workflow_id}/invocations"
         invocation_response = self._post(url, data=request, json=True)
         if assert_ok:
-            invocation_response.raise_for_status()
+            api_asserts.assert_status_code_is_ok(invocation_response)
         return invocation_response
 
     def invoke_workflow(
@@ -2084,6 +2093,11 @@ class BaseWorkflowPopulator(BasePopulator):
             return response.json()
         else:
             return ordered_load(response.text)
+
+    def invocation_to_request(self, invocation_id: str):
+        request_response = self._get(f"invocations/{invocation_id}/request")
+        api_asserts.assert_status_code_is_ok(request_response)
+        return request_response.json()
 
     def set_tags(self, workflow_id: str, tags: List[str]) -> None:
         update_payload = {"tags": tags}
@@ -2183,7 +2197,51 @@ class BaseWorkflowPopulator(BasePopulator):
             workflow_request.update(extra_invocation_kwds)
         if has_uploads:
             self.dataset_populator.wait_for_history(history_id, assert_ok=True)
+
+        return self._request_to_summary(
+            history_id,
+            workflow_id,
+            workflow_request,
+            inputs=inputs,
+            wait=wait,
+            assert_ok=assert_ok,
+            invocations=invocations,
+            expected_response=expected_response,
+        )
+
+    def rerun(self, run_jobs_summary: "RunJobsSummary", wait: bool = True, assert_ok: bool = True) -> "RunJobsSummary":
+        history_id = run_jobs_summary.history_id
+        invocation_id = run_jobs_summary.invocation_id
+        inputs = run_jobs_summary.inputs
+        workflow_request = self.invocation_to_request(invocation_id)
+        workflow_id = workflow_request["workflow_id"]
+        assert workflow_request["history_id"] == history_id
+        assert workflow_request["instance"] is True
+        return self._request_to_summary(
+            history_id,
+            workflow_id,
+            workflow_request,
+            inputs=inputs,
+            wait=wait,
+            assert_ok=assert_ok,
+            invocations=1,
+            expected_response=200,
+        )
+
+    def _request_to_summary(
+        self,
+        history_id: str,
+        workflow_id: str,
+        workflow_request: Dict[str, Any],
+        inputs,
+        wait: bool,
+        assert_ok: bool,
+        invocations: int,
+        expected_response: int,
+    ):
+        workflow_populator = self
         assert invocations > 0
+
         jobs = []
         for _ in range(invocations):
             invocation_response = workflow_populator.invoke_workflow_raw(workflow_id, workflow_request)
@@ -2199,6 +2257,7 @@ class BaseWorkflowPopulator(BasePopulator):
                 if wait:
                     workflow_populator.wait_for_workflow(workflow_id, invocation_id, history_id, assert_ok=assert_ok)
                 jobs.extend(self.dataset_populator.invocation_jobs(invocation_id))
+
         return RunJobsSummary(
             history_id=history_id,
             workflow_id=workflow_id,
@@ -2730,7 +2789,6 @@ class LibraryPopulator:
         payload = {
             "history_id": history_id,  # TODO: Shouldn't be needed :(
             "targets": targets,
-            "validate_hashes": True,
         }
         return library, self.dataset_populator.fetch(payload, assert_ok=assert_ok)
 
@@ -3313,8 +3371,6 @@ def load_data_dict(
             hda = dataset_populator.new_dataset(history_id, content=value)
             label_map[key] = dataset_populator.ds_entry(hda)
             inputs[key] = hda
-        else:
-            raise ValueError(f"Invalid test_data def {test_data}")
 
     return inputs, label_map, has_uploads
 
@@ -3461,6 +3517,17 @@ class DescribeToolExecutionOutput:
             raise AssertionError(f"Output dataset had file extension {ext}, not the expected extension {expected_ext}")
         return self
 
+    @property
+    def json(self) -> Any:
+        contents = self.contents
+        return json.loads(contents)
+
+    def with_json(self, expected_json: Any) -> Self:
+        json = self.json
+        if json != expected_json:
+            raise AssertionError(f"Output dataset contianed JSON {json}, not {expected_json} as expected")
+        return self
+
     # aliases that might help make tests more like English in particular cases. Declaring them explicitly
     # instead quick little aliases because of https://github.com/python/mypy/issues/6700
     def assert_contains(self, expected_contents: str) -> Self:
@@ -3585,6 +3652,9 @@ class DescribeFailure:
     def __init__(self, response: Response):
         self._response = response
 
+    def __call__(self) -> Self:
+        return self
+
     def with_status_code(self, code: int) -> Self:
         api_asserts.assert_status_code_is(self._response, code)
         return self
@@ -3609,6 +3679,34 @@ class RequiredTool:
         return execution
 
 
+class DescribeToolInputs:
+    _input_format: str = "legacy"
+    _inputs: Optional[Dict[str, Any]]
+
+    def __init__(self, input_format: str):
+        self._input_format = input_format
+        self._inputs = None
+
+    def any(self, inputs: Dict[str, Any]) -> Self:
+        self._inputs = inputs
+        return self
+
+    def flat(self, inputs: Dict[str, Any]) -> Self:
+        if self._input_format == "legacy":
+            self._inputs = inputs
+        return self
+
+    def nested(self, inputs: Dict[str, Any]) -> Self:
+        if self._input_format == "21.01":
+            self._inputs = inputs
+        return self
+
+    # aliases for self to create silly little English sentense... inputs.when.flat().when.legacy()
+    @property
+    def when(self) -> Self:
+        return self
+
+
 class DescribeToolExecution:
     _history_id: Optional[str] = None
     _execute_response: Optional[Response] = None
@@ -3627,8 +3725,13 @@ class DescribeToolExecution:
             self._history_id = has_history_id._history_id
         return self
 
-    def with_inputs(self, inputs: Dict[str, Any]) -> Self:
-        self._inputs = inputs
+    def with_inputs(self, inputs: Union[DescribeToolInputs, Dict[str, Any]]) -> Self:
+        if isinstance(inputs, DescribeToolInputs):
+            self._inputs = inputs._inputs or {}
+            self._input_format = inputs._input_format
+        else:
+            self._inputs = inputs
+            self._input_format = "legacy"
         return self
 
     def with_nested_inputs(self, inputs: Dict[str, Any]) -> Self:
@@ -3695,12 +3798,24 @@ class DescribeToolExecution:
         return DescribeJob(self._dataset_populator, history_id, job["id"])
 
     @property
-    def assert_fails(self) -> DescribeFailure:
+    def that_fails(self) -> DescribeFailure:
         self._ensure_executed()
         execute_response = self._execute_response
         assert execute_response is not None
-        api_asserts.assert_status_code_is_not_ok(execute_response)
-        return DescribeFailure(execute_response)
+        if execute_response.status_code != 200:
+            return DescribeFailure(execute_response)
+        else:
+            response = self._assert_executed_ok()
+            jobs = response["jobs"]
+            for job in jobs:
+                final_state = self._dataset_populator.wait_for_job(job["id"])
+                assert final_state == "error"
+            return DescribeFailure(execute_response)
+
+    # alternative assert_ syntax for cases where it reads better.
+    @property
+    def assert_fails(self) -> DescribeFailure:
+        return self.that_fails
 
 
 class GiHttpMixin:

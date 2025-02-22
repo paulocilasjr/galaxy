@@ -68,6 +68,10 @@ List of behavior changes associated with profile versions:
 - Do not use Galaxy python environment for `data_source_async` tools.
 - Drop request parameters received by data source tools that are not declared in `<request_param_translation>` section.
 
+### 24.2
+
+- require a valid `data_ref` attribute for `data_column` parameters
+
 ### Examples
 
 A normal tool:
@@ -312,8 +316,6 @@ A generalisation for macro tokens, templates and xml macros, i.e.
 `<macro name="an_xml_macro" type="xml">` is identical to `<xml name="an_xml_macro">`,
 `<macro name="a_template" type="template">` is identical to `<template name="a_template">`, and
 `<macro name="a_token" type="xml">` is identical to `<token name="a_token">`.
-
-Note that 
        ]]></xs:documentation>
         </xs:annotation>
       </xs:element>
@@ -673,6 +675,12 @@ resolver.
     </xs:simpleContent>
   </xs:complexType>
   <xs:complexType name="Resource">
+    <xs:annotation>
+      <xs:documentation xml:lang="en"><![CDATA[
+Allows to describe a resource requirement of a tool. At the moment this tag is mostly descriptive,
+It can be used by dynamic job rules and serves to guide Galaxy admins.
+]]></xs:documentation>
+    </xs:annotation>
     <xs:simpleContent>
       <xs:extension base="xs:string">
         <xs:attribute name="type" type="ResourceType" use="required">
@@ -1564,7 +1572,7 @@ used to load typed parameters. This string will be loaded as JSON and its type w
 attempt to be preserved through API requests to Galaxy.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="ftype" type="xs:string">
+    <xs:attribute name="ftype" type="Format">
       <xs:annotation>
         <xs:documentation xml:lang="en">This attribute name should be included
 only with parameters of ``type`` ``data`` for the tool. If this
@@ -1709,7 +1717,7 @@ generated as JSON. This can be useful for testing tool outputs that are not file
 ]]></xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="ftype" type="xs:string">
+    <xs:attribute name="ftype" type="Format">
       <xs:annotation>
         <xs:documentation xml:lang="en"><![CDATA[
 
@@ -3499,9 +3507,13 @@ Data source HTTP action (e.g. ``get`` or ``put``) to use.</xs:documentation>
     <xs:annotation>
       <xs:documentation xml:lang="en"><![CDATA[
 
-This is a container for conditional parameters in the tool (must contain 'when'
-tag sets) - the command line (or portions thereof) are then wrapped in an if-else
-statement. A good example tool that demonstrates many conditional parameters is
+This is a container for conditional parameters in the tool (must contain ``when``
+tag sets) - the command line is then wrapped in an if-else statement.
+
+Note that value of a conditional cannot be changed on the workflow run form.
+If you expect users to interact with the element during runtime consider using ``sections`` instead.
+
+An example tool that demonstrates conditional parameters is
 [biom_convert.xml](https://github.com/galaxyproject/tools-iuc/blob/main/tools/biom_format/biom_convert.xml).
 
 ```xml
@@ -3608,7 +3620,7 @@ Referenced parameter to pass method.]]></xs:documentation>
           <xs:annotation>
             <xs:documentation xml:lang="en"><![CDATA[Infrequently used option to dynamically access Galaxy internals, this should be avoided.
 
-Is referenced parameter is the same group.]]></xs:documentation>
+Is referenced parameter in the same group.]]></xs:documentation>
           </xs:annotation>
         </xs:attribute>
         <xs:attribute name="label" type="xs:string">
@@ -4196,7 +4208,7 @@ only when the ``type`` attribute value is ``data``, ``float``, or ``integer``.</
 only when the ``type`` attribute value is ``data``, ``float``, or ``integer``.</xs:documentation>
           </xs:annotation>
         </xs:attribute>
-        <xs:attribute name="format" type="xs:string">
+        <xs:attribute name="format" type="FormatList">
           <xs:annotation>
             <xs:documentation xml:lang="en">The comma-separated list of accepted
 data formats for this input. The list of supported data formats is contained in the
@@ -4312,6 +4324,47 @@ template if the parameter is ``true`` or checked by the user. Used only when the
             <xs:documentation xml:lang="en">The parameter value in the Cheetah
 template if the parameter is ``false`` or not checked by the user. Used only
 when the ``type`` attribute value is ``boolean``.</xs:documentation>
+          </xs:annotation>
+        </xs:attribute>
+        <xs:attribute name="allow_uri_if_protocol" type="xs:string">
+          <xs:annotation>
+            <xs:documentation xml:lang="en"><![CDATA[
+When using `deferred` datasets, Galaxy will try to materialize them into files when
+running the tool. In case we don't want to download them, the `allow_uri_if_protocol` attribute
+can be used to avoid materialization and pass the URI as is to the tool.
+This is useful when the tool can handle the URI directly. Example:
+
+```xml
+<param name="input" type="data" format="txt" allow_uri_if_protocol="http,https,s3" />
+```
+
+You can specify multiple prefixes separated by comma or use the wildcard '*' to always
+treat deferred datasets as URIs. The source URI will be passed to the tool as is.
+
+This attribute is only valid for `data` parameters.
+
+### Handling the input in the tool
+
+Since the input can be a regular file or a URI, the tool should be able to handle both cases.
+The tool should check if the input ``is_deferred`` and if so, treat it as a URI, otherwise
+it should treat it as a regular file. Please note that only deferred datasets with the specified
+protocol will be passed as URIs, the rest will be materialized as files.
+
+Here is an example command section that handles the above sample input:
+
+```python
+<command>
+  ## We should handle the case where the input must be treated as a URI with a specific protocol.
+  #if $input.is_deferred:
+      ## Here, the input is a deferred dataset which source URI has the protocol 'https', 'http' or 's3'.
+      echo '$input' > '$output' ## The ouput will be the source URI of the input.
+  #else:
+      ## Here, the input is a regular dataset or a materialized dataset in case of a 
+      ## deferred dataset which source URI has a protocol different than 'https', 'http' or 's3'.
+      cp '$input' '$output' ## The output will be a copy of the input content.
+</command>
+```
+         ]]></xs:documentation>
           </xs:annotation>
         </xs:attribute>
         <xs:attribute name="size" type="xs:string" gxdocs:deprecated="true">
@@ -5603,8 +5656,9 @@ Currently the following filters are defined:
 * ``data_meta`` populate or filter options based on the metadata of another input parameter specified by ``ref``. If a ``column`` is given options are filtered for which the entry in this column ``column`` is equal to metadata of the input parameter specified by ``ref``.
 If no ``column`` is given the metadata value of the referenced input is added to the options list (in this case the corresponding ``options`` tag must not have the ``from_data_table`` or ``from_dataset`` attributes).
 In both cases the desired metadata is selected by ``key``.
+* ``data_table`` remove values according to the entries of a data table. Remove options where the value in ``column`` appears in the data table ``table_name`` in column ``table_column``. Setting ``keep`` will to ``true`` will keep only entries also appearing in the data table.
 
-The ``static_value`` and ``regexp`` filters can be inverted by setting ``keep`` to true.
+The ``static_value``, ``regexp``, and ``data_table`` filters can be inverted by setting ``keep`` to true.
 
 * ``add_value``: add an option with a given ``name`` and ``value`` to the options. By default, the new option is appended, with ``index`` the insertion position can be specified.
 * ``remove_value``: remove a value from the options. Either specified explicitly with ``value``, the value of another input specified with ``ref``, or the metadata ``key`` of another input ``meta_ref``.
@@ -5778,7 +5832,7 @@ only used if ``multiple`` is set to ``true``.]]></xs:documentation>
       <xs:annotation>
         <xs:documentation xml:lang="en">If ``true``, keep columns matching the
 value, if ``false`` discard columns matching the value. Used when ``type`` is
-either ``static_value``, ``regexp`` or ``param_value``. Default: true</xs:documentation>
+either ``static_value``, ``regexp``, ``param_value`` or ``data_table``. Default: true.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
     <xs:attribute name="value" type="xs:string">
@@ -5825,6 +5879,18 @@ from the list.</xs:documentation>
     <xs:attribute name="name_val_separator" type="xs:string">
       <xs:annotation>
         <xs:documentation xml:lang="en">Only used if ``type`` is ``attribute_value_splitter``. This is used to separate attributes and values from each other within an attribute-value pair, i.e. ``=`` if the target content is ``A=V; B=W; C=Y``. Defaults to whitespace.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="table_name" type="xs:string">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Only used when ``type`` is
+``data_table``. The name of the data table to use.</xs:documentation>
+      </xs:annotation>
+    </xs:attribute>
+    <xs:attribute name="data_table_column" type="xs:string">
+      <xs:annotation>
+        <xs:documentation xml:lang="en">Only used when ``type`` is
+``data_table``. The column of the data table to use (0 based index or column name).</xs:documentation>
       </xs:annotation>
     </xs:attribute>
   </xs:complexType>
@@ -5883,7 +5949,7 @@ The default is ``galaxy.json``.
     </xs:choice>
   </xs:group>
   <xs:attributeGroup name="OutputCommon">
-    <xs:attribute name="format" type="xs:string">
+    <xs:attribute name="format" type="Format">
       <xs:annotation>
         <xs:documentation xml:lang="en"><![CDATA[
 The short name for the output datatype. The valid values for format can be found in
@@ -6271,12 +6337,12 @@ Therefore a filter for such a variable looks like the following example.
         <xs:documentation xml:lang="en">Indicates that the entire path of the discovered dataset relative to the specified directory should be available for matching patterns.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="format" type="xs:string" use="optional">
+    <xs:attribute name="format" type="Format" use="optional">
       <xs:annotation>
         <xs:documentation xml:lang="en">Format (or datatype) of discovered datasets (an alias with ``ext``).</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="ext" type="xs:string" use="optional">
+    <xs:attribute name="ext" type="Format" use="optional">
       <xs:annotation>
         <xs:documentation xml:lang="en">Format (or datatype) of discovered datasets (an alias with ``format``).</xs:documentation>
       </xs:annotation>
@@ -6286,7 +6352,7 @@ Therefore a filter for such a variable looks like the following example.
         <xs:documentation xml:lang="en"><![CDATA[
         A string `[reverse_][SORT_COMP_]SORTBY` describing the desired sort order of the collection elements.
         `SORTBY` can be `filename`, `name`, `designation`, `dbkey` and the optional `SORT_COMP` can be either
-        `lexical` or `numeric`. Default is lexical sorting by filename. 
+        `lexical` or `numeric`. Default is lexical sorting by filename.
         Note that lexical sorting is case sensitive, i.e. upper case characters come before lower case characters (e.g. "Apple" < "Banana" < "apple" < "banana").
         ]]></xs:documentation>
       </xs:annotation>
@@ -7600,7 +7666,7 @@ parameter (e.g. ``value="interval"`` above), or of the deprecated ``input_datase
 attribute.</xs:documentation>
       </xs:annotation>
     </xs:attribute>
-    <xs:attribute name="format" type="xs:string" use="required">
+    <xs:attribute name="format" type="Format" use="required">
       <xs:annotation>
         <xs:documentation xml:lang="en">This value must be a supported data type
 (e.g. ``format="interval"``). See
@@ -7879,6 +7945,7 @@ and ``bibtex`` are the only supported options.</xs:documentation>
       <xs:enumeration value="add_value"/>
       <xs:enumeration value="remove_value"/>
       <xs:enumeration value="sort_by"/>
+      <xs:enumeration value="data_table"/>
     </xs:restriction>
   </xs:simpleType>
   <xs:simpleType name="ActionsConditionalFilterType">
@@ -8022,6 +8089,18 @@ favour of a ``has_size`` assertion.</xs:documentation>
       </xs:simpleType>
     </xs:union>
   </xs:simpleType>
+  
+  <xs:simpleType name="Format">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="[0-9a-z.-_]+"/>
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="FormatList">
+    <xs:restriction base="xs:string">
+      <xs:pattern value="([a-z0-9._-]+)(,([a-z0-9._-]+))*"/>
+    </xs:restriction>
+  </xs:simpleType>
+  
   <xs:complexType name="EdamTopics">
     <xs:annotation gxdocs:best_practices="tool-annotations-edam">
       <xs:documentation xml:lang="en"><![CDATA[

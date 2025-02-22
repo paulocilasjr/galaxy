@@ -129,7 +129,7 @@ class BaseJobRunner:
         self.work_threads = []
         log.debug(f"Starting {self.nworkers} {self.runner_name} workers")
         for i in range(self.nworkers):
-            worker = threading.Thread(name="%s.work_thread-%d" % (self.runner_name, i), target=self.run_next)
+            worker = threading.Thread(name=f"{self.runner_name}.work_thread-{i}", target=self.run_next)
             worker.daemon = True
             worker.start()
             self.work_threads.append(worker)
@@ -493,7 +493,7 @@ class BaseJobRunner:
                     env=os.environ,
                     preexec_fn=os.setpgrp,
                 )
-            log.debug("execution of external set_meta for job %d finished" % job_wrapper.job_id)
+            log.debug("execution of external set_meta for job %d finished", job_wrapper.job_id)
 
     def get_job_file(self, job_wrapper: "MinimalJobWrapper", **kwds) -> str:
         job_metrics = job_wrapper.app.job_metrics
@@ -589,7 +589,8 @@ class BaseJobRunner:
             log.exception("Caught exception in runner state handler")
 
     def fail_job(self, job_state: "JobState", exception=False, message="Job failed", full_status=None):
-        if getattr(job_state, "stop_job", True):
+        job = job_state.job_wrapper.get_job()
+        if getattr(job_state, "stop_job", True) and job.state != model.Job.states.NEW:
             self.stop_job(job_state.job_wrapper)
         job_state.job_wrapper.reclaim_ownership()
         self._handle_runner_state("failure", job_state)

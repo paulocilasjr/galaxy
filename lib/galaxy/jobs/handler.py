@@ -231,7 +231,7 @@ class StopSignalException(Exception):
 class BaseJobHandlerQueue(Monitors):
     STOP_SIGNAL = object()
 
-    def __init__(self, app: MinimalManagerApp, dispatcher):
+    def __init__(self, app: MinimalManagerApp, dispatcher: "DefaultJobDispatcher"):
         """
         Initializes the Queue, creates (unstarted) monitoring thread.
         """
@@ -309,7 +309,8 @@ class JobHandlerQueue(BaseJobHandlerQueue):
             with transaction(session):
                 session.commit()
 
-    def _check_job_at_startup(self, job):
+    def _check_job_at_startup(self, job: model.Job):
+        assert job.tool_id is not None
         if not self.app.toolbox.has_tool(job.tool_id, job.tool_version, exact=True):
             log.warning(f"({job.id}) Tool '{job.tool_id}' removed from tool config, unable to recover job")
             self.job_wrapper(job).fail(
@@ -551,22 +552,22 @@ class JobHandlerQueue(BaseJobHandlerQueue):
                 if job_state == JOB_WAIT:
                     new_waiting_jobs.append(job.id)
                 elif job_state == JOB_INPUT_ERROR:
-                    log.info("(%d) Job unable to run: one or more inputs in error state" % job.id)
+                    log.info("(%d) Job unable to run: one or more inputs in error state", job.id)
                 elif job_state == JOB_INPUT_DELETED:
-                    log.info("(%d) Job unable to run: one or more inputs deleted" % job.id)
+                    log.info("(%d) Job unable to run: one or more inputs deleted", job.id)
                 elif job_state == JOB_READY:
                     self.dispatcher.put(self.job_wrappers.pop(job.id))
-                    log.info("(%d) Job dispatched" % job.id)
+                    log.info("(%d) Job dispatched", job.id)
                 elif job_state == JOB_DELETED:
-                    log.info("(%d) Job deleted by user while still queued" % job.id)
+                    log.info("(%d) Job deleted by user while still queued", job.id)
                 elif job_state == JOB_ADMIN_DELETED:
-                    log.info("(%d) Job deleted by admin while still queued" % job.id)
+                    log.info("(%d) Job deleted by admin while still queued", job.id)
                 elif job_state in (JOB_USER_OVER_QUOTA, JOB_USER_OVER_TOTAL_WALLTIME):
                     if job_state == JOB_USER_OVER_QUOTA:
-                        log.info("(%d) User (%s) is over quota: job paused" % (job.id, job.user_id))
+                        log.info("(%d) User (%s) is over quota: job paused", job.id, job.user_id)
                         what = "your disk quota"
                     else:
-                        log.info("(%d) User (%s) is over total walltime limit: job paused" % (job.id, job.user_id))
+                        log.info("(%d) User (%s) is over total walltime limit: job paused", job.id, job.user_id)
                         what = "your total job runtime"
 
                     job.set_state(model.Job.states.PAUSED)
@@ -579,7 +580,7 @@ class JobHandlerQueue(BaseJobHandlerQueue):
                     # A more informative message is shown wherever the job state is set to error
                     pass
                 else:
-                    log.error("(%d) Job in unknown state '%s'" % (job.id, job_state))
+                    log.error("(%d) Job in unknown state '%s'", job.id, job_state)
                     new_waiting_jobs.append(job.id)
             except Exception:
                 log.exception("failure running job %d", job.id)
@@ -1207,7 +1208,7 @@ class DefaultJobDispatcher:
         for runner in self.job_runners.values():
             runner.start()
 
-    def url_to_destination(self, url):
+    def url_to_destination(self, url: str):
         """This is used by the runner mapper (a.k.a. dynamic runner) and
         recovery methods to have runners convert URLs to destinations.
 
@@ -1268,14 +1269,15 @@ class DefaultJobDispatcher:
             runner_name = job_runner_name.split(":", 1)[0]
             log.debug(f"Stopping job {job_wrapper.get_id_tag()} in {runner_name} runner")
             try:
-                self.job_runners[runner_name].stop_job(job_wrapper)
+                if job.state != model.Job.states.NEW:
+                    self.job_runners[runner_name].stop_job(job_wrapper)
             except KeyError:
                 log.error(f"stop(): ({job_wrapper.get_id_tag()}) Invalid job runner: {runner_name}")
                 # Job and output dataset states have already been updated, so nothing is done here.
 
     def recover(self, job, job_wrapper):
         runner_name = (job.job_runner_name.split(":", 1))[0]
-        log.debug("recovering job %d in %s runner" % (job.id, runner_name))
+        log.debug("recovering job %d in %s runner", job.id, runner_name)
         runner = self.get_job_runner(job_wrapper)
         try:
             runner.recover(job, job_wrapper)

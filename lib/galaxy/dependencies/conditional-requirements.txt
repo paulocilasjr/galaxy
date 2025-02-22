@@ -1,5 +1,5 @@
 # These dependencies are only required when certain config options are set
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 mysqlclient
 fluent-logger
 sentry-sdk[fastapi]
@@ -14,6 +14,7 @@ python-pam
 galaxycloudrunner
 pkce
 total-perspective-vortex>=2.3.2,<3
+openai
 
 # For file sources plugins
 fs.webdavfs>=0.4.2  # type: webdav

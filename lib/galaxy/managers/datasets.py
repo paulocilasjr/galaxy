@@ -32,6 +32,7 @@ from galaxy.model import (
     Dataset,
     DatasetHash,
     DatasetInstance,
+    HistoryDatasetAssociation,
 )
 from galaxy.model.base import transaction
 from galaxy.schema.tasks import (
@@ -124,7 +125,7 @@ class DatasetManager(base.ModelManager[Dataset], secured.AccessibleManagerMixin,
 
     def has_access_permission(self, dataset, user):
         """
-        Return T/F if the user has role-based access to the dataset.
+        Whether the user has role-based access to the dataset.
         """
         roles = user.all_roles_exploiting_cache() if user else []
         return self.app.security_agent.can_access_dataset(roles, dataset)
@@ -159,8 +160,11 @@ class DatasetManager(base.ModelManager[Dataset], secured.AccessibleManagerMixin,
             sa_session.commit()
 
     def compute_hash(self, request: ComputeDatasetHashTaskRequest):
-        # For files in extra_files_path
         dataset = self.by_id(request.dataset_id)
+        if dataset.purged:
+            log.warning("Unable to calculate hash for purged dataset [%s].", dataset.id)
+            return
+        # For files in extra_files_path
         extra_files_path = request.extra_files_path
         if extra_files_path:
             extra_dir = dataset.extra_files_path_name
@@ -169,7 +173,6 @@ class DatasetManager(base.ModelManager[Dataset], secured.AccessibleManagerMixin,
             file_path = dataset.get_file_name()
         hash_function = request.hash_function
         calculated_hash_value = memory_bound_hexdigest(hash_func_name=hash_function, path=file_path)
-        extra_files_path = request.extra_files_path
         dataset_hash = model.DatasetHash(
             hash_function=hash_function,
             hash_value=calculated_hash_value,
@@ -191,7 +194,7 @@ class DatasetManager(base.ModelManager[Dataset], secured.AccessibleManagerMixin,
                     f"Re-calculated dataset hash for dataset [{dataset.id}] and new hash value [{calculated_hash_value}] does not equal previous hash value [{old_hash_value}]."
                 )
             else:
-                log.debug("Duplicated dataset hash request, no update to the database.")
+                log.debug("Duplicated dataset hash request for dataset [%s], no update to the database.", dataset.id)
 
     # TODO: implement above for groups
     # TODO: datatypes?
@@ -319,9 +322,11 @@ class DatasetSerializer(base.ModelSerializer[DatasetManager], deletable.Purgable
         return permissions
 
 
-# ============================================================================= AKA DatasetInstanceManager
+U = TypeVar("U", bound=DatasetInstance)
+
+
 class DatasetAssociationManager(
-    base.ModelManager[DatasetInstance],
+    base.ModelManager[U],
     secured.AccessibleManagerMixin,
     secured.OwnableManagerMixin,
     deletable.PurgableManagerMixin,
@@ -342,14 +347,14 @@ class DatasetAssociationManager(
         super().__init__(app)
         self.dataset_manager = DatasetManager(app)
 
-    def is_accessible(self, item, user: Optional[model.User], **kwargs: Any) -> bool:
+    def is_accessible(self, item: U, user: Optional[model.User], **kwargs: Any) -> bool:
         """
         Is this DA accessible to `user`?
         """
         # defer to the dataset
         return self.dataset_manager.is_accessible(item.dataset, user, **kwargs)
 
-    def delete(self, item, flush: bool = True, stop_job: bool = False, **kwargs):
+    def delete(self, item: U, flush: bool = True, stop_job: bool = False, **kwargs):
         """
         Marks this dataset association as deleted.
         If `stop_job` is True, will stop the creating job if all other outputs are deleted.
@@ -359,7 +364,7 @@ class DatasetAssociationManager(
             self.stop_creating_job(item, flush=flush)
         return item
 
-    def purge(self, item, flush=True, **kwargs):
+    def purge(self, item: U, flush=True, **kwargs):
         """
         Purge this DatasetInstance and the dataset underlying it.
         """
@@ -377,6 +382,7 @@ class DatasetAssociationManager(
         self.stop_creating_job(item, flush=True)
 
         # more importantly, purge underlying dataset as well
+        assert item.dataset
         if item.dataset.user_can_purge:
             self.dataset_manager.purge(item.dataset, flush=flush, **kwargs)
         return item
@@ -385,7 +391,7 @@ class DatasetAssociationManager(
         raise exceptions.NotImplemented("Abstract Method")
 
     # .... associated job
-    def creating_job(self, dataset_assoc):
+    def creating_job(self, dataset_assoc: U):
         """
         Return the `Job` that created this dataset or None if not found.
         """
@@ -397,7 +403,7 @@ class DatasetAssociationManager(
             break
         return job
 
-    def stop_creating_job(self, dataset_assoc, flush=False):
+    def stop_creating_job(self, dataset_assoc: U, flush=False):
         """
         Stops an dataset_assoc's creating job if all the job's other outputs are deleted.
         """
@@ -424,21 +430,22 @@ class DatasetAssociationManager(
                     return True
         return False
 
-    def is_composite(self, dataset_assoc):
+    def is_composite(self, dataset_assoc: U):
         """
         Return True if this hda/ldda is a composite type dataset.
 
-        .. note:: see also (whereever we keep information on composite datatypes?)
+        .. note:: see also (wherever we keep information on composite datatypes?)
         """
         return dataset_assoc.extension in self.app.datatypes_registry.get_composite_extensions()
 
-    def extra_files(self, dataset_assoc):
+    def extra_files(self, dataset_assoc: U):
         """Return a list of file paths for composite files, an empty list otherwise."""
         if not self.is_composite(dataset_assoc):
             return []
+        assert dataset_assoc.dataset
         return glob.glob(os.path.join(dataset_assoc.dataset.extra_files_path, "*"))
 
-    def serialize_dataset_association_roles(self, dataset_assoc):
+    def serialize_dataset_association_roles(self, dataset_assoc: U):
         if hasattr(dataset_assoc, "library_dataset_dataset_association"):
             library_dataset = dataset_assoc
             dataset = library_dataset.library_dataset_dataset_association.dataset
@@ -469,13 +476,16 @@ class DatasetAssociationManager(
             rval["modify_item_roles"] = modify_item_role_list
         return rval
 
-    def ensure_dataset_on_disk(self, trans, dataset):
+    def ensure_dataset_on_disk(self, trans, dataset: U):
         # Not a guarantee data is really present, but excludes a lot of expected cases
         if not dataset.dataset:
             raise exceptions.InternalServerError("Item has no associated dataset.")
         if dataset.purged or dataset.dataset.purged:
             raise exceptions.ItemDeletionException("The dataset you are attempting to view has been purged.")
-        elif dataset.deleted and not (trans.user_is_admin or self.is_owner(dataset, trans.get_user())):
+        elif dataset.deleted and not (
+            trans.user_is_admin
+            or (isinstance(dataset, HistoryDatasetAssociation) and self.is_owner(dataset, trans.get_user()))  # type: ignore[arg-type]
+        ):
             raise exceptions.ItemDeletionException("The dataset you are attempting to view has been deleted.")
         elif dataset.state == Dataset.states.UPLOAD:
             raise exceptions.Conflict("Please wait until this dataset finishes uploading before attempting to view it.")
@@ -500,7 +510,7 @@ class DatasetAssociationManager(
             if not self.app.object_store.exists(dataset.dataset):
                 raise exceptions.RequestParameterInvalidException("The dataset is in error and has no data.")
 
-    def ensure_can_change_datatype(self, dataset: DatasetInstance, raiseException: bool = True) -> bool:
+    def ensure_can_change_datatype(self, dataset: U, raiseException: bool = True) -> bool:
         if not dataset.datatype.is_datatype_change_allowed():
             if not raiseException:
                 return False
@@ -509,7 +519,7 @@ class DatasetAssociationManager(
             )
         return True
 
-    def ensure_can_set_metadata(self, dataset: DatasetInstance, raiseException: bool = True) -> bool:
+    def ensure_can_set_metadata(self, dataset: U, raiseException: bool = True) -> bool:
         if not dataset.ok_to_edit_metadata():
             if not raiseException:
                 return False
@@ -518,7 +528,7 @@ class DatasetAssociationManager(
             )
         return True
 
-    def detect_datatype(self, trans, dataset_assoc: DatasetInstance):
+    def detect_datatype(self, trans, dataset_assoc: U):
         """Sniff and assign the datatype to a given dataset association (ldda or hda)"""
         session = self.session()
         self.ensure_can_change_datatype(dataset_assoc)
@@ -531,9 +541,7 @@ class DatasetAssociationManager(
             session.commit()
         self.set_metadata(trans, dataset_assoc)
 
-    def set_metadata(
-        self, trans, dataset_assoc: DatasetInstance, overwrite: bool = False, validate: bool = True
-    ) -> None:
+    def set_metadata(self, trans, dataset_assoc: U, overwrite: bool = False, validate: bool = True) -> None:
         """Trigger a job that detects and sets metadata on a given dataset association (ldda or hda)"""
         self.ensure_can_set_metadata(dataset_assoc)
         if overwrite:
@@ -554,7 +562,7 @@ class DatasetAssociationManager(
                 if spec.get("default"):
                     setattr(data.metadata, name, spec.unwrap(spec.get("default")))
 
-    def update_permissions(self, trans, dataset_assoc, **kwd):
+    def update_permissions(self, trans, dataset_assoc: U, **kwd):
         action = kwd.get("action", "set_permissions")
         if action not in ["remove_restrictions", "make_private", "set_permissions"]:
             raise exceptions.RequestParameterInvalidException(
@@ -608,7 +616,7 @@ class DatasetAssociationManager(
 
             self._set_permissions(trans, dataset_assoc, role_ids_dict)
 
-    def _set_permissions(self, trans, dataset_assoc, roles_dict):
+    def _set_permissions(self, trans, dataset_assoc: U, roles_dict):
         raise exceptions.NotImplemented()
 
 

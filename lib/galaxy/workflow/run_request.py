@@ -28,7 +28,10 @@ from galaxy.model.base import (
     transaction,
 )
 from galaxy.tool_util.parameters import DataRequestUri
+from galaxy.tools.parameters.basic import ParameterValueError
 from galaxy.tools.parameters.meta import expand_workflow_inputs
+from galaxy.tools.parameters.workflow_utils import NO_REPLACEMENT
+from galaxy.workflow.modules import WorkflowModuleInjector
 from galaxy.workflow.resources import get_resource_mapper_function
 
 if TYPE_CHECKING:
@@ -121,7 +124,9 @@ def _normalize_inputs(
             elif inputs_by_el == "step_uuid":
                 possible_input_keys.append(str(step.uuid))
             elif inputs_by_el == "name":
-                possible_input_keys.append(step.label or step.tool_inputs.get("name"))  # type:ignore[union-attr]
+                label = step.effective_label
+                if label:
+                    possible_input_keys.append(label)
             else:
                 raise exceptions.MessageException(
                     "Workflow cannot be run because unexpected inputs_by value specified."
@@ -317,7 +322,7 @@ def build_workflow_run_configs(
     add_to_history = "no_add_to_history" not in payload
     legacy = payload.get("legacy", False)
     already_normalized = payload.get("parameters_normalized", False)
-    raw_parameters = payload.get("parameters", {})
+    raw_parameters = payload.get("parameters") or {}
     requires_materialization: bool = False
     run_configs = []
     unexpanded_param_map = _normalize_step_parameters(
@@ -366,11 +371,20 @@ def build_workflow_run_configs(
 
         steps_by_id = workflow.steps_by_id
         # Set workflow inputs.
+        module_injector = WorkflowModuleInjector(trans, False)
         for key, input_dict in normalized_inputs.items():
             if input_dict is None:
                 continue
             step = steps_by_id[key]
             if step.type == "parameter_input":
+                module_injector.inject(step)
+                input_param = step.module.get_runtime_inputs(step.module)["input"]
+                try:
+                    input_param.validate(input_dict, trans=trans)
+                except ParameterValueError as e:
+                    raise exceptions.RequestParameterInvalidException(
+                        f"{step.label or step.order_index + 1}: {e.message_suffix}"
+                    )
                 continue
             if "src" not in input_dict:
                 raise exceptions.RequestParameterInvalidException(
@@ -586,7 +600,8 @@ def workflow_run_config_to_request(
             type=param_types.REPLACEMENT_PARAMETERS,
         )
     for step_id, content in run_config.inputs.items():
-        workflow_invocation.add_input(content, step_id)
+        if content is not NO_REPLACEMENT:
+            workflow_invocation.add_input(content, step_id)
     for step_id, param_dict in run_config.param_map.items():
         add_parameter(
             name=str(step_id),

@@ -159,31 +159,9 @@ class GalaxyRBACAgent(RBACAgent):
             is_public_item = False
         # Admins can always choose from all non-deleted roles
         if trans.user_is_admin or trans.app.config.expose_user_email:
-            if trans.user_is_admin:
-                stmt = select(Role).where(Role.deleted == false())
-            else:
-                # User is not an admin but the configuration exposes all private roles to all users.
-                stmt = select(Role).where(and_(Role.deleted == false(), Role.type == Role.types.PRIVATE))
-            if search_query:
-                stmt = stmt.where(Role.name.like(search_query, escape="/"))
-
-            count_stmt = select(func.count()).select_from(stmt)
-            total_count = trans.sa_session.scalar(count_stmt)
-
-            if limit is not None:
-                # Takes the least number of results from beginning that includes the requested page
-                stmt = stmt.order_by(Role.name).limit(limit)
-                page_start = (page * page_limit) - page_limit
-                page_end = page_start + page_limit
-                if total_count < page_start + 1:
-                    # Return empty list if there are less results than the requested position
-                    roles = []
-                else:
-                    roles = trans.sa_session.scalars(stmt).all()
-                    roles = roles[page_start:page_end]
-            else:
-                stmt = stmt.order_by(Role.name)
-                roles = trans.sa_session.scalars(stmt).all()
+            roles = _get_valid_roles_exposed(
+                trans.sa_session, search_query, trans.user_is_admin, limit, page, page_limit
+            )
         # Non-admin and public item
         elif is_public_item:
             # Add the current user's private role
@@ -389,17 +367,21 @@ class GalaxyRBACAgent(RBACAgent):
                     if len(base_result) == len(new_result):
                         common_result = set(base_result).intersection(new_result)
                         if len(common_result) == len(base_result):
-                            log.debug("Match on permissions for id %d" % item.library_dataset_id)
+                            log.debug("Match on permissions for id %d", item.library_dataset_id)
                         # TODO: Fix this failure message:
                         else:
                             log.debug(
-                                "Error: dataset %d; originally: %s; now: %s"
-                                % (item.library_dataset_id, base_result, new_result)
+                                "Error: dataset %d; originally: %s; now: %s",
+                                item.library_dataset_id,
+                                base_result,
+                                new_result,
                             )
                     else:
                         log.debug(
-                            "Error: dataset %d: had %d entries, now %d entries"
-                            % (item.library_dataset_id, len(base_result), len(new_result))
+                            "Error: dataset %d: had %d entries, now %d entries",
+                            item.library_dataset_id,
+                            len(base_result),
+                            len(new_result),
                         )
                 log.debug("get_actions_for_items: Test end")
             except Exception as e:
@@ -453,9 +435,9 @@ class GalaxyRBACAgent(RBACAgent):
             for item in items:
                 orig_value = self.allow_action(user_roles, action, item)
                 if orig_value == ret_allow_action[item.id]:
-                    log.debug("Item %d: success" % item.id)
+                    log.debug("Item %d: success", item.id)
                 else:
-                    log.debug("Item %d: fail: original: %s; new: %s" % (item.id, orig_value, ret_allow_action[item.id]))
+                    log.debug("Item %d: fail: original: %s; new: %s", item.id, orig_value, ret_allow_action[item.id])
             log.debug("allow_action_for_items: test end")
         return ret_allow_action
 
@@ -1416,9 +1398,9 @@ WHERE history.user_id != :user_id and history_dataset_association.dataset_id = :
                 if can_show:
                     return True, hidden_folder_ids
                 if hidden_folder_ids:
-                    hidden_folder_ids = "%s,%d" % (hidden_folder_ids, folder.id)
+                    hidden_folder_ids = f"{hidden_folder_ids},{folder.id}"
                 else:
-                    hidden_folder_ids = "%d" % folder.id
+                    hidden_folder_ids = f"{folder.id}"
         return False, hidden_folder_ids
 
     def get_showable_folders(
@@ -1526,7 +1508,6 @@ WHERE history.user_id != :user_id and history_dataset_association.dataset_id = :
         else:
             delete_stmt = delete_stmt.where(UserRoleAssociation.role_id != private_role.id)
         role_ids = self._filter_private_roles(role_ids)
-        # breakpoint()
 
         insert_values = [{"user_id": user.id, "role_id": role_id} for role_id in role_ids]
         self._set_associations(user, UserRoleAssociation, delete_stmt, insert_values)
@@ -1673,9 +1654,9 @@ WHERE history.user_id != :user_id and history_dataset_association.dataset_id = :
             if can_access:
                 return True, hidden_folder_ids
             if hidden_folder_ids:
-                hidden_folder_ids = "%s,%d" % (hidden_folder_ids, sub_folder.id)
+                hidden_folder_ids = f"{hidden_folder_ids},{sub_folder.id}"
             else:
-                hidden_folder_ids = "%d" % sub_folder.id
+                hidden_folder_ids = f"{sub_folder.id}"
         return False, hidden_folder_ids
 
 
@@ -1713,7 +1694,7 @@ class HostAgent(RBACAgent):
             if action == self.permitted_actions.DATASET_ACCESS and action.action not in [
                 dp.action for dp in hda.dataset.actions
             ]:
-                log.debug("Allowing access to public dataset with hda: %i." % hda.id)
+                log.debug("Allowing access to public dataset with hda: %d.", hda.id)
                 return True  # dataset has no roles associated with the access permission, thus is already public
             stmt = (
                 select(HistoryDatasetAssociationDisplayAtAuthorization)
@@ -1722,9 +1703,7 @@ class HostAgent(RBACAgent):
             )
             hdadaa = self.sa_session.scalars(stmt).first()
             if not hdadaa:
-                log.debug(
-                    "Denying access to private dataset with hda: %i.  No hdadaa record for this dataset." % hda.id
-                )
+                log.debug("Denying access to private dataset with hda: %d.  No hdadaa record for this dataset.", hda.id)
                 return False  # no auth
             # We could just look up the reverse of addr, but then we'd also
             # have to verify it with the forward address and special case any
@@ -1742,17 +1721,18 @@ class HostAgent(RBACAgent):
                     pass  # can't resolve, try next
             else:
                 log.debug(
-                    "Denying access to private dataset with hda: %i.  Remote addr is not a valid server for site: %s."
-                    % (hda.id, hdadaa.site)
+                    "Denying access to private dataset with hda: %d.  Remote addr is not a valid server for site: %s.",
+                    hda.id,
+                    hdadaa.site,
                 )
                 return False  # remote addr is not in the server list
             if (datetime.utcnow() - hdadaa.update_time) > timedelta(seconds=60):
                 log.debug(
-                    "Denying access to private dataset with hda: %i.  Authorization was granted, but has expired."
-                    % hda.id
+                    "Denying access to private dataset with hda: %d.  Authorization was granted, but has expired.",
+                    hda.id,
                 )
                 return False  # not authz'd in the last 60 seconds
-            log.debug("Allowing access to private dataset with hda: %i.  Remote server is: %s." % (hda.id, server))
+            log.debug("Allowing access to private dataset with hda: %d.  Remote server is: %s.", hda.id, server)
             return True
         else:
             raise Exception("The dataset access permission is the only valid permission in the host security agent.")
@@ -1808,3 +1788,46 @@ def is_foreign_key_violation(error):
         # If this is a PostgreSQL foreign key error, then error.orig is an instance of psycopg2.errors.ForeignKeyViolation
         # and should have an attribute `pgcode` = 23503.
         return int(getattr(error.orig, "pgcode", -1)) == 23503
+
+
+def _get_valid_roles_exposed(session, search_query, is_admin, limit, page, page_limit):
+    """Case: trans.user_is_admin or trans.app.config.expose_user_email"""
+    stmt = select(Role).where(Role.deleted == false())
+
+    if not is_admin:
+        # User is not an admin but the configuration exposes all private roles to all users,
+        # so only private roles are returned.
+        stmt = stmt.where(Role.type == Role.types.PRIVATE)
+
+    if search_query:
+        stmt = stmt.where(Role.name.like(search_query, escape="/"))
+
+        # Also check against user emails for associated users of private roles ONLY
+        stmt2 = (
+            select(Role)
+            .join(Role.users)
+            .join(User)
+            .where(and_(Role.type == Role.types.PRIVATE, User.email.like(search_query, escape="/")))
+        )
+        stmt = stmt.union(stmt2)
+
+    count_stmt = select(func.count()).select_from(stmt)
+    total_count = session.scalar(count_stmt)
+
+    stmt = stmt.order_by(Role.name)
+
+    if limit is not None:
+        # Takes the least number of results from beginning that includes the requested page
+        stmt = stmt.limit(limit)
+        page_start = (page * page_limit) - page_limit
+        page_end = page_start + page_limit
+        if total_count < page_start + 1:
+            # Return empty list if there are less results than the requested position
+            return []
+
+    stmt = select(Role).from_statement(stmt)
+    roles = session.scalars(stmt).all()
+    if limit is not None:
+        roles = roles[page_start:page_end]
+
+    return roles

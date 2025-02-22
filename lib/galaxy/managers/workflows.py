@@ -89,7 +89,6 @@ from galaxy.model.index_filter_util import (
     text_column_filter,
 )
 from galaxy.model.item_attrs import UsesAnnotations
-from galaxy.model.scoped_session import galaxy_scoped_session
 from galaxy.schema.invocation import InvocationCancellationUserRequest
 from galaxy.schema.schema import WorkflowIndexQueryPayload
 from galaxy.structured_app import MinimalManagerApp
@@ -139,6 +138,7 @@ from galaxy.workflow.steps import (
     attach_ordered_steps,
     has_cycles,
 )
+from galaxy.workflow.trs_proxy import TrsProxy
 
 log = logging.getLogger(__name__)
 
@@ -598,8 +598,10 @@ class WorkflowSerializer(sharable.SharableModelSerializer):
 
 
 class WorkflowContentsManager(UsesAnnotations):
-    def __init__(self, app: MinimalManagerApp):
+
+    def __init__(self, app: MinimalManagerApp, trs_proxy: TrsProxy):
         self.app = app
+        self.trs_proxy = trs_proxy
         self._resource_mapper_function = get_resource_mapper_function(app)
 
     def ensure_raw_description(self, dict_or_raw_description):
@@ -618,7 +620,7 @@ class WorkflowContentsManager(UsesAnnotations):
         import_options = ImportOptions()
         import_options.deduplicate_subworkflows = True
         as_dict = python_to_workflow(as_dict, galaxy_interface, workflow_directory=None, import_options=import_options)
-        raw_description = RawWorkflowDescription(as_dict, path)
+        raw_description = RawWorkflowDescription(as_dict)
         created_workflow = self.build_workflow_from_raw_description(trans, raw_description, WorkflowCreateOptions())
         return created_workflow.workflow
 
@@ -736,9 +738,10 @@ class WorkflowContentsManager(UsesAnnotations):
         )
 
         if missing_tool_tups and not workflow_update_options.allow_missing_tools:
-            errors = []
-            for missing_tool_tup in missing_tool_tups:
-                errors.append("Step %i: Requires tool '%s'." % (int(missing_tool_tup[3]) + 1, missing_tool_tup[0]))
+            errors = [
+                f"Step {int(missing_tool_tup[3]) + 1}: Requires tool '{missing_tool_tup[0]}'."
+                for missing_tool_tup in missing_tool_tups
+            ]
             raise MissingToolsException(workflow, errors)
 
         # Connect up
@@ -814,18 +817,17 @@ class WorkflowContentsManager(UsesAnnotations):
         workflow.license = data.get("license")
         workflow.creator_metadata = data.get("creator")
 
-        if hasattr(workflow_state_resolution_options, "archive_source"):
-            if workflow_state_resolution_options.archive_source:
-                source_metadata = {}
-                if workflow_state_resolution_options.archive_source == "trs_tool":
-                    source_metadata["trs_tool_id"] = workflow_state_resolution_options.trs_tool_id
-                    source_metadata["trs_version_id"] = workflow_state_resolution_options.trs_version_id
-                    source_metadata["trs_server"] = workflow_state_resolution_options.trs_server
-                    source_metadata["trs_url"] = workflow_state_resolution_options.trs_url
-                elif not workflow_state_resolution_options.archive_source.startswith("file://"):  # URL import
-                    source_metadata["url"] = workflow_state_resolution_options.archive_source
-                workflow_state_resolution_options.archive_source = None  # so trs_id is not set for subworkflows
-                workflow.source_metadata = source_metadata  # type:ignore[assignment]
+        if getattr(workflow_state_resolution_options, "archive_source", None):
+            source_metadata = {}
+            if workflow_state_resolution_options.archive_source in ("trs_tool", "trs_url"):
+                source_metadata["trs_tool_id"] = workflow_state_resolution_options.trs_tool_id
+                source_metadata["trs_version_id"] = workflow_state_resolution_options.trs_version_id
+                source_metadata["trs_server"] = workflow_state_resolution_options.trs_server
+                source_metadata["trs_url"] = workflow_state_resolution_options.trs_url
+            elif not workflow_state_resolution_options.archive_source.startswith("file://"):  # URL import
+                source_metadata["url"] = workflow_state_resolution_options.archive_source
+            workflow_state_resolution_options.archive_source = None  # so trs_id is not set for subworkflows
+            workflow.source_metadata = source_metadata
 
         # Assume no errors until we find a step that has some
         workflow.has_errors = False
@@ -957,8 +959,9 @@ class WorkflowContentsManager(UsesAnnotations):
         return wf_dict
 
     def _sync_stored_workflow(self, trans, stored_workflow):
-        workflow_path = stored_workflow.from_path
-        self.store_workflow_to_path(workflow_path, stored_workflow, stored_workflow.latest_workflow, trans=trans)
+        if trans.user_is_admin:
+            workflow_path = stored_workflow.from_path
+            self.store_workflow_to_path(workflow_path, stored_workflow, stored_workflow.latest_workflow, trans=trans)
 
     def store_workflow_artifacts(self, directory, filename_base, workflow, **kwd):
         modern_workflow_path = os.path.join(directory, f"{filename_base}.gxwf.yml")
@@ -1077,6 +1080,7 @@ class WorkflowContentsManager(UsesAnnotations):
             step_models.append(step_model)
         return {
             "id": trans.app.security.encode_id(stored.id),
+            "workflow_id": trans.app.security.encode_id(workflow.id),
             "history_id": trans.app.security.encode_id(history.id) if history else None,
             "name": stored.name,
             "owner": stored.user.username,
@@ -1105,7 +1109,7 @@ class WorkflowContentsManager(UsesAnnotations):
                     if not isinstance(conns, list):
                         conns = [conns]
                     value_list = [
-                        "Output '%s' from Step %d." % (conn.output_name, int(conn.output_step.order_index) + 1)
+                        f"Output '{conn.output_name}' from Step {int(conn.output_step.order_index) + 1}."
                         for conn in conns
                     ]
                     value = ",".join(value_list)
@@ -1130,7 +1134,7 @@ class WorkflowContentsManager(UsesAnnotations):
                         for i in range(len(repeat_values)):
                             nested_input_dict = {}
                             index = repeat_values[i]["__index__"]
-                            nested_input_dict["title"] = "%i. %s" % (i + 1, input.title)
+                            nested_input_dict["title"] = f"{i + 1}. {input.title}"
                             try:
                                 nested_input_dict["inputs"] = do_inputs(
                                     input.inputs,
@@ -2016,9 +2020,54 @@ class WorkflowContentsManager(UsesAnnotations):
                 tools.extend(self.get_all_tools(step.subworkflow))
         return tools
 
+    def get_or_create_workflow_from_trs(
+        self,
+        trans: ProvidesUserContext,
+        trs_url: Optional[str],
+        trs_id: Optional[str] = None,
+        trs_version: Optional[str] = None,
+        trs_server: Optional[str] = None,
+    ):
+        user_id = trans.user and trans.user.id
+        assert user_id, "Cannot create workflow for anonymous user"
+        if not trs_url:
+            assert trs_server and trs_id and trs_version, "trs_url or trs_server, trs_version and trs_id must be passed"
+            server = self.trs_proxy.get_server(trs_server)
+            trs_url = server.get_trs_url(trs_id, trs_version)
+        else:
+            _, trs_id, trs_version = self.trs_proxy.get_trs_id_and_version_from_trs_url(trs_url=trs_url)
+        assert trs_id and trs_version and trs_url
+
+        workflow = self.get_workflow_by_trs_id_and_version(trs_id=trs_id, trs_version=trs_version, user_id=user_id)
+        if not workflow:
+            workflow = self.create_workflow_from_trs_url(trans, trs_url, trs_server)
+        return workflow
+
+    def create_workflow_from_trs_url(
+        self, trans: ProvidesUserContext, trs_url: str, trs_server: Optional[str] = None
+    ) -> StoredWorkflow:
+        _, trs_tool_id, trs_version_id = self.trs_proxy.get_trs_id_and_version_from_trs_url(trs_url=trs_url)
+        data = self.trs_proxy.get_version_from_trs_url(trs_url)
+        as_dict = yaml.safe_load(data)
+        raw_workflow_description = self.normalize_workflow_format(trans, as_dict)
+        created_workflow = self.build_workflow_from_raw_description(
+            trans,
+            raw_workflow_description,
+            WorkflowCreateOptions(
+                trs_tool_id=trs_tool_id,
+                trs_version_id=trs_version_id,
+                trs_url=trs_url,
+                trs_server=trs_server,
+                archive_source="trs_url",
+            ),
+        )
+        return created_workflow.stored_workflow
+
     def get_workflow_by_trs_id_and_version(
-        self, sa_session: galaxy_scoped_session, trs_id: str, trs_version: str, user_id: Optional[int] = None
-    ) -> Optional[model.Workflow]:
+        self, trs_id: str, trs_version: str, user_id: Optional[int] = None
+    ) -> Optional[model.StoredWorkflow]:
+        sa_session = self.app.model.session
+
         def to_json(column, keys: List[str]):
             assert sa_session.bind
             if sa_session.bind.dialect.name == "postgresql":
@@ -2028,14 +2077,15 @@ class WorkflowContentsManager(UsesAnnotations):
                 return cast.astext
             else:
                 for key in keys:
-                    column = column.__getitem__(key)
+                    column = func.json_extract(column, f"$.{key}")
                 return column
 
         stmnt = (
-            select(model.Workflow)
-            .join(model.StoredWorkflow, model.Workflow.stored_workflow_id == model.StoredWorkflow.id)
+            select(model.StoredWorkflow)
+            .join(model.Workflow, model.Workflow.id == model.StoredWorkflow.latest_workflow_id)
             .filter(
                 and_(
+                    model.StoredWorkflow.deleted == false(),
                     to_json(model.Workflow.source_metadata, ["trs_tool_id"]) == trs_id,
                     to_json(model.Workflow.source_metadata, ["trs_version_id"]) == trs_version,
                 )
@@ -2043,11 +2093,11 @@ class WorkflowContentsManager(UsesAnnotations):
         )
         if user_id:
             stmnt = stmnt.filter(
-                model.StoredWorkflow.user_id == user_id, model.StoredWorkflow.latest_workflow_id == model.Workflow.id
+                model.StoredWorkflow.user_id == user_id,
             )
         else:
             stmnt = stmnt.filter(model.StoredWorkflow.importable == true())
-        return sa_session.execute(stmnt).scalar()
+        return sa_session.execute(stmnt.order_by(model.StoredWorkflow.id.desc()).limit(1)).scalar()
 
 
 class RefactorRequest(RefactorActions):
@@ -2104,11 +2154,11 @@ class WorkflowCreateOptions(WorkflowStateResolutionOptions):
     shed_tool_conf: Optional[str] = None
 
     # for workflows imported by archive source
-    archive_source: Optional[str] = ""
-    trs_tool_id: str = ""
-    trs_version_id: str = ""
-    trs_server: str = ""
-    trs_url: str = ""
+    archive_source: Optional[str] = None
+    trs_tool_id: Optional[str] = None
+    trs_version_id: Optional[str] = None
+    trs_server: Optional[str] = None
+    trs_url: Optional[str] = None
 
     @property
     def is_importable(self):

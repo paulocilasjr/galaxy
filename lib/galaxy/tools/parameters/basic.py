@@ -41,13 +41,18 @@ from galaxy.model import (
 )
 from galaxy.model.dataset_collections import builder
 from galaxy.schema.fetch_data import FilesPayload
+from galaxy.tool_util.parameters.factory import get_color_value
 from galaxy.tool_util.parser import get_input_source as ensure_input_source
 from galaxy.tool_util.parser.util import (
     boolean_is_checked,
     boolean_true_and_false_values,
     ParameterParseException,
+    text_input_is_optional,
 )
-from galaxy.tools.parameters.workflow_utils import workflow_building_modes
+from galaxy.tools.parameters.workflow_utils import (
+    NO_REPLACEMENT,
+    workflow_building_modes,
+)
 from galaxy.util import (
     sanitize_param,
     string_as_bool,
@@ -121,6 +126,8 @@ def parse_dynamic_options(param, input_source):
     if not dynamic_options_config:
         return None
     options_elem = dynamic_options_config.elem()
+    if options_elem is None:
+        return None
     return dynamic_options.DynamicOptions(options_elem, param)
 
 
@@ -142,7 +149,7 @@ def assert_throws_param_value_error(message):
 
 class ParameterValueError(ValueError):
     def __init__(self, message_suffix, parameter_name, parameter_value=NO_PARAMETER_VALUE, is_dynamic=None):
-        message = f"parameter '{parameter_name}': {message_suffix}"
+        message = f"Parameter '{parameter_name}': {message_suffix}"
         super().__init__(message)
         self.message_suffix = message_suffix
         self.parameter_name = parameter_name
@@ -171,11 +178,11 @@ class ToolParameter(UsesDictVisibleKeys):
     >>> trans = Bunch(app=None)
     >>> p = ToolParameter(None, XML('<param argument="--parameter-name" type="text" value="default" />'))
     >>> assert p.name == 'parameter_name'
-    >>> assert sorted(p.to_dict(trans).items()) == [('argument', '--parameter-name'), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'ToolParameter'), ('name', 'parameter_name'), ('optional', False), ('refresh_on_change', False), ('type', 'text'), ('value', None)]
+    >>> assert sorted(p.to_dict(trans).items()) == [('argument', '--parameter-name'), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'ToolParameter'), ('name', 'parameter_name'), ('optional', False), ('refresh_on_change', False), ('type', 'text'), ('value', None)]
     """
 
     name: str
-    dict_collection_visible_keys = ["name", "argument", "type", "label", "help", "refresh_on_change"]
+    dict_collection_visible_keys = ["name", "argument", "type", "label", "help", "help_format", "refresh_on_change"]
 
     def __init__(self, tool, input_source, context=None):
         input_source = ensure_input_source(input_source)
@@ -186,17 +193,15 @@ class ToolParameter(UsesDictVisibleKeys):
         self.hidden = input_source.get_bool("hidden", False)
         self.refresh_on_change = input_source.get_bool("refresh_on_change", False)
         self.optional = input_source.parse_optional()
-        self.optionality_inferred = False
         self.is_dynamic = False
         self.label = input_source.parse_label()
         self.help = input_source.parse_help()
+        self.help_format = input_source.get("help_format") or "html"
         if (sanitizer_elem := input_source.parse_sanitizer_elem()) is not None:
             self.sanitizer = ToolParameterSanitizer.from_element(sanitizer_elem)
         else:
             self.sanitizer = None
-        self.validators = []
-        for elem in input_source.parse_validator_elems():
-            self.validators.append(validation.Validator.from_element(self, elem))
+        self.validators = validation.to_validators(tool.app if tool else None, input_source.parse_validators())
 
     @property
     def visible(self) -> bool:
@@ -245,6 +250,8 @@ class ToolParameter(UsesDictVisibleKeys):
     def value_to_basic(self, value, app, use_security=False):
         if is_runtime_value(value):
             return runtime_to_json(value)
+        elif value == NO_REPLACEMENT:
+            return {"__class__": "NoReplacement"}
         return self.to_json(value, app, use_security)
 
     def value_from_basic(self, value, app, ignore_errors=False):
@@ -253,16 +260,18 @@ class ToolParameter(UsesDictVisibleKeys):
             if isinstance(self, HiddenToolParameter):
                 raise ParameterValueError(message_suffix="Runtime Parameter not valid", parameter_name=self.name)
             return runtime_to_object(value)
-        elif isinstance(value, MutableMapping) and value.get("__class__") == "UnvalidatedValue":
-            return value["value"]
+        elif isinstance(value, MutableMapping):
+            if value.get("__class__") == "UnvalidatedValue":
+                return value["value"]
+            elif value.get("__class__") == "NoReplacement":
+                return NO_REPLACEMENT
         # Delegate to the 'to_python' method
-        if ignore_errors:
-            try:
-                return self.to_python(value, app)
-            except Exception:
-                return value
-        else:
+        try:
             return self.to_python(value, app)
+        except Exception:
+            if not ignore_errors:
+                raise
+            return value
 
     def value_to_display_text(self, value) -> str:
         if is_runtime_value(value):
@@ -315,7 +324,7 @@ class ToolParameter(UsesDictVisibleKeys):
             try:
                 validator.validate(value, trans)
             except ValueError as e:
-                raise ValueError(f"Parameter {self.name}: {e}") from None
+                raise ParameterValueError(str(e), self.name, value) from None
 
     def to_dict(self, trans, other_values=None):
         """to_dict tool parameter. This can be overridden by subclasses."""
@@ -358,18 +367,7 @@ class SimpleTextToolParameter(ToolParameter):
         else:
             # Optionality not explicitly defined, default to False
             optional = False
-            if self.type == "text":
-                # A text parameter that doesn't raise a validation error on empty string
-                # is considered to be optional
-                try:
-                    for validator in self.validators:
-                        validator.validate("")
-                    optional = True
-                    self.optionality_inferred = True
-                except ValueError:
-                    pass
         self.optional = optional
-
         if self.optional:
             self.value = None
         else:
@@ -377,11 +375,7 @@ class SimpleTextToolParameter(ToolParameter):
 
     def to_json(self, value, app, use_security):
         """Convert a value to a string representation suitable for persisting"""
-        if value is None:
-            rval = "" if not self.optional else None
-        else:
-            rval = unicodify(value)
-        return rval
+        return unicodify(value)
 
     def get_initial_value(self, trans, other_values):
         return self.value
@@ -398,15 +392,22 @@ class TextToolParameter(SimpleTextToolParameter):
     >>> print(p.name)
     _name
     >>> sorted(p.to_dict(trans).items())
-    [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'TextToolParameter'), ('name', '_name'), ('optional', True), ('refresh_on_change', False), ('type', 'text'), ('value', 'default')]
+    [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'TextToolParameter'), ('name', '_name'), ('optional', True), ('refresh_on_change', False), ('type', 'text'), ('value', 'default')]
     """
 
     def __init__(self, tool, input_source):
         input_source = ensure_input_source(input_source)
         super().__init__(tool, input_source)
+        self.profile = tool.profile if tool else None
         self.datalist = []
         for title, value, _ in input_source.parse_static_options():
             self.datalist.append({"label": title, "value": value})
+
+        # why does Integer and Float subclass this :_(
+        if self.type == "text":
+            self.optional, self.optionality_inferred = text_input_is_optional(input_source)
+        else:
+            self.optionality_inferred = False
         self.value = input_source.get("value")
         self.area = input_source.get_bool("area", False)
 
@@ -418,6 +419,16 @@ class TextToolParameter(SimpleTextToolParameter):
             and contains_workflow_parameter(value, search=search)
         ):
             return super().validate(value, trans)
+
+    @property
+    def wrapper_default(self) -> Optional[str]:
+        """Handle change in default handling pre and post 23.0 profiles."""
+        profile = self.profile
+        legacy_behavior = profile is None or Version(str(profile)) < Version("23.0")
+        default_value = None
+        if self.optional and self.optionality_inferred and legacy_behavior:
+            default_value = ""
+        return default_value
 
     def to_dict(self, trans, other_values=None):
         d = super().to_dict(trans)
@@ -438,9 +449,9 @@ class IntegerToolParameter(TextToolParameter):
     >>> p = IntegerToolParameter(None, XML('<param name="_name" type="integer" value="10" />'))
     >>> print(p.name)
     _name
-    >>> assert sorted(p.to_dict(trans).items()) == [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('max', None), ('min', None), ('model_class', 'IntegerToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'integer'), ('value', u'10')]
+    >>> assert sorted(p.to_dict(trans).items()) == [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('max', None), ('min', None), ('model_class', 'IntegerToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'integer'), ('value', u'10')]
     >>> assert type(p.from_json("10", trans)) == int
-    >>> with assert_throws_param_value_error("parameter '_name': an integer or workflow parameter is required"):
+    >>> with assert_throws_param_value_error("Parameter '_name': an integer or workflow parameter is required"):
     ...     p.from_json("_string", trans)
     """
 
@@ -466,7 +477,7 @@ class IntegerToolParameter(TextToolParameter):
             except ValueError:
                 raise ParameterValueError("attribute 'max' must be an integer", self.name, self.max)
         if self.min is not None or self.max is not None:
-            self.validators.append(validation.InRangeValidator(None, self.min, self.max))
+            self.validators.append(validation.InRangeValidator.simple_range_validator(self.min, self.max))
 
     def from_json(self, value, trans, other_values=None):
         other_values = other_values or {}
@@ -511,9 +522,9 @@ class FloatToolParameter(TextToolParameter):
     >>> p = FloatToolParameter(None, XML('<param name="_name" type="float" value="3.141592" />'))
     >>> print(p.name)
     _name
-    >>> assert sorted(p.to_dict(trans).items()) == [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('max', None), ('min', None), ('model_class', 'FloatToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'float'), ('value', u'3.141592')]
+    >>> assert sorted(p.to_dict(trans).items()) == [('area', False), ('argument', None), ('datalist', []), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('max', None), ('min', None), ('model_class', 'FloatToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'float'), ('value', u'3.141592')]
     >>> assert type(p.from_json("36.1", trans)) == float
-    >>> with assert_throws_param_value_error("parameter '_name': an integer or workflow parameter is required"):
+    >>> with assert_throws_param_value_error("Parameter '_name': an integer or workflow parameter is required"):
     ...     p.from_json("_string", trans)
     """
 
@@ -539,7 +550,7 @@ class FloatToolParameter(TextToolParameter):
             except ValueError:
                 raise ParameterValueError("attribute 'max' must be a real number", self.name, self.max)
         if self.min is not None or self.max is not None:
-            self.validators.append(validation.InRangeValidator(None, self.min, self.max))
+            self.validators.append(validation.InRangeValidator.simple_range_validator(self.min, self.max))
 
     def from_json(self, value, trans, other_values=None):
         other_values = other_values or {}
@@ -586,7 +597,7 @@ class BooleanToolParameter(ToolParameter):
     >>> p = BooleanToolParameter(None, XML('<param name="_name" type="boolean" checked="yes" truevalue="_truevalue" falsevalue="_falsevalue" />'))
     >>> print(p.name)
     _name
-    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('falsevalue', '_falsevalue'), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'BooleanToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('truevalue', '_truevalue'), ('type', 'boolean'), ('value', True)]
+    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('falsevalue', '_falsevalue'), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'BooleanToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('truevalue', '_truevalue'), ('type', 'boolean'), ('value', True)]
     >>> print(p.from_json('true', trans))
     True
     >>> print(p.to_param_dict_string(True))
@@ -660,7 +671,7 @@ class FileToolParameter(ToolParameter):
     >>> print(p.name)
     _name
     >>> sorted(p.to_dict(trans).items())
-    [('argument', None), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'FileToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'file'), ('value', None)]
+    [('argument', None), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'FileToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'file'), ('value', None)]
     """
 
     def __init__(self, tool, input_source):
@@ -734,7 +745,7 @@ class FTPFileToolParameter(ToolParameter):
     >>> print(p.name)
     _name
     >>> sorted(p.to_dict(trans).items())
-    [('argument', None), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'FTPFileToolParameter'), ('multiple', True), ('name', '_name'), ('optional', True), ('refresh_on_change', False), ('type', 'ftpfile'), ('value', None)]
+    [('argument', None), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'FTPFileToolParameter'), ('multiple', True), ('name', '_name'), ('optional', True), ('refresh_on_change', False), ('type', 'ftpfile'), ('value', None)]
     """
 
     def __init__(self, tool, input_source):
@@ -807,7 +818,7 @@ class HiddenToolParameter(ToolParameter):
     >>> p = HiddenToolParameter(None, XML('<param name="_name" type="hidden" value="_value"/>'))
     >>> print(p.name)
     _name
-    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('hidden', True), ('is_dynamic', False), ('label', ''), ('model_class', 'HiddenToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'hidden'), ('value', u'_value')]
+    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('help_format', 'html'), ('hidden', True), ('is_dynamic', False), ('label', ''), ('model_class', 'HiddenToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'hidden'), ('value', u'_value')]
     """
 
     def __init__(self, tool, input_source):
@@ -834,21 +845,21 @@ class ColorToolParameter(ToolParameter):
     _name
     >>> print(p.to_param_dict_string("#ffffff"))
     #ffffff
-    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'ColorToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'color'), ('value', u'#ffffff')]
+    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'ColorToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'color'), ('value', u'#ffffff')]
     >>> p = ColorToolParameter(None, XML('<param name="_name" type="color"/>'))
     >>> print(p.get_initial_value(trans, {}))
     #000000
     >>> p = ColorToolParameter(None, XML('<param name="_name" type="color" value="#ffffff" rgb="True"/>'))
     >>> print(p.to_param_dict_string("#ffffff"))
     (255, 255, 255)
-    >>> with assert_throws_param_value_error("parameter '_name': Failed to convert 'None' to RGB."):
+    >>> with assert_throws_param_value_error("Parameter '_name': Failed to convert 'None' to RGB."):
     ...      p.to_param_dict_string(None)
     """
 
     def __init__(self, tool, input_source):
         input_source = ensure_input_source(input_source)
         super().__init__(tool, input_source)
-        self.value = input_source.get("value", "#000000")
+        self.value = get_color_value(input_source)
         self.rgb = input_source.get_bool("rgb", False)
 
     def get_initial_value(self, trans, other_values):
@@ -875,7 +886,7 @@ class BaseURLToolParameter(HiddenToolParameter):
     >>> p = BaseURLToolParameter(None, XML('<param name="_name" type="base_url" value="_value"/>'))
     >>> print(p.name)
     _name
-    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('hidden', True), ('is_dynamic', False), ('label', ''), ('model_class', 'BaseURLToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'base_url'), ('value', u'_value')]
+    >>> assert sorted(p.to_dict(trans).items()) == [('argument', None), ('help', ''), ('help_format', 'html'), ('hidden', True), ('is_dynamic', False), ('label', ''), ('model_class', 'BaseURLToolParameter'), ('name', '_name'), ('optional', False), ('refresh_on_change', False), ('type', 'base_url'), ('value', u'_value')]
     """
 
     def __init__(self, tool, input_source):
@@ -925,7 +936,7 @@ class SelectToolParameter(ToolParameter):
     >>> print(p.name)
     _name
     >>> sorted(p.to_dict(trans).items())
-    [('argument', None), ('display', None), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'SelectToolParameter'), ('multiple', False), ('name', '_name'), ('optional', False), ('options', [('x_label', 'x', False), ('y_label', 'y', True), ('z_label', 'z', False)]), ('refresh_on_change', False), ('textable', False), ('type', 'select'), ('value', 'y')]
+    [('argument', None), ('display', None), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'SelectToolParameter'), ('multiple', False), ('name', '_name'), ('optional', False), ('options', [('x_label', 'x', False), ('y_label', 'y', True), ('z_label', 'z', False)]), ('refresh_on_change', False), ('textable', False), ('type', 'select'), ('value', 'y')]
     >>> p = SelectToolParameter(None, XML(
     ... '''
     ... <param name="_name" type="select" multiple="true">
@@ -937,7 +948,7 @@ class SelectToolParameter(ToolParameter):
     >>> print(p.name)
     _name
     >>> sorted(p.to_dict(trans).items())
-    [('argument', None), ('display', None), ('help', ''), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'SelectToolParameter'), ('multiple', True), ('name', '_name'), ('optional', True), ('options', [('x_label', 'x', False), ('y_label', 'y', True), ('z_label', 'z', True)]), ('refresh_on_change', False), ('textable', False), ('type', 'select'), ('value', ['y', 'z'])]
+    [('argument', None), ('display', None), ('help', ''), ('help_format', 'html'), ('hidden', False), ('is_dynamic', False), ('label', ''), ('model_class', 'SelectToolParameter'), ('multiple', True), ('name', '_name'), ('optional', True), ('options', [('x_label', 'x', False), ('y_label', 'y', True), ('z_label', 'z', True)]), ('refresh_on_change', False), ('textable', False), ('type', 'select'), ('value', ['y', 'z'])]
     >>> print(p.to_param_dict_string(["y", "z"]))
     y,z
     """
@@ -1396,6 +1407,10 @@ class ColumnListParameter(SelectToolParameter):
         if self.accept_default:
             self.optional = True
         self.data_ref = input_source.get("data_ref", None)
+        profile = tool.profile if tool else None
+        assert (
+            profile is None or Version(str(profile)) < Version("24.2") or self.data_ref is not None
+        ), f"data_column parameter {self.name} requires a valid data_ref attribute"
         self.ref_input = None
         # Legacy style default value specification...
         self.default_value = input_source.get("default_value", None)
@@ -1963,7 +1978,7 @@ class BaseDataToolParameter(ToolParameter):
                     try:
                         validator.validate(v, trans)
                     except ValueError as e:
-                        raise ValueError(f"Parameter {self.name}: {e}") from None
+                        raise ParameterValueError(str(e), self.name, v) from None
 
         dataset_count = 0
         if value:
@@ -1992,10 +2007,10 @@ class BaseDataToolParameter(ToolParameter):
 
         if self.min is not None:
             if self.min > dataset_count:
-                raise ValueError("At least %d datasets are required for %s" % (self.min, self.name))
+                raise ValueError(f"At least {self.min} datasets are required for {self.name}")
         if self.max is not None:
             if self.max < dataset_count:
-                raise ValueError("At most %d datasets are required for %s" % (self.max, self.name))
+                raise ValueError(f"At most {self.max} datasets are required for {self.name}")
 
 
 def src_id_to_item(
@@ -2044,7 +2059,7 @@ class DataToolParameter(BaseDataToolParameter):
         self.load_contents = int(input_source.get("load_contents", 0))
         # Add metadata validator
         if not input_source.get_bool("no_validation", False):
-            self.validators.append(validation.MetadataValidator())
+            self.validators.append(validation.MetadataValidator.default_metadata_validator())
         self._parse_formats(trans, input_source)
         tag = input_source.get("tag")
         self.multiple = input_source.get_bool("multiple", False)
@@ -2061,6 +2076,7 @@ class DataToolParameter(BaseDataToolParameter):
         self.tag = tag
         self.is_dynamic = True
         self._parse_options(input_source)
+        self._parse_allow_uri_if_protocol(input_source)
         # Load conversions required for the dataset input
         self.conversions = []
         self.default_object = input_source.parse_default()
@@ -2081,6 +2097,12 @@ class DataToolParameter(BaseDataToolParameter):
                         self.name,
                     )
                 self.conversions.append((name, conv_extension, [conv_type]))
+
+    def _parse_allow_uri_if_protocol(self, input_source):
+        # In case of deferred datasets, if the source URI is prefixed with one of the values in this list,
+        # the dataset will behave as an URI and will not be materialized into a file path.
+        allow_uri_if_protocol = input_source.get("allow_uri_if_protocol", None)
+        self.allow_uri_if_protocol = allow_uri_if_protocol.split(",") if allow_uri_if_protocol else []
 
     def from_json(self, value, trans, other_values=None):
         session = trans.sa_session
@@ -2501,7 +2523,7 @@ class DataCollectionToolParameter(BaseDataToolParameter):
             if isinstance(value, HistoryDatasetCollectionAssociation):
                 display_text = f"{value.hid}: {value.name}"
             else:
-                display_text = "Element %d:%s" % (value.identifier_index, value.identifier_name)
+                display_text = f"Element {value.identifier_index}:{value.identifier_name}"
         except AttributeError:
             display_text = "No dataset collection."
         return display_text

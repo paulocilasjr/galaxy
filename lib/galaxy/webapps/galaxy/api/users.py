@@ -57,6 +57,7 @@ from galaxy.schema.schema import (
     FlexibleUserIdType,
     MaybeLimitedUserModel,
     RemoteUserCreationPayload,
+    RoleListResponse,
     UserBeaconSetting,
     UserCreationPayload,
     UserDeletionPayload,
@@ -730,6 +731,19 @@ class FastAPIUsers:
         if not self.service.user_manager.send_activation_email(trans, user.email, user.username):
             raise exceptions.MessageException("Unable to send activation email.")
 
+    @router.get(
+        "/api/users/{user_id}/roles",
+        name="get user roles",
+        description="Return a list of roles associated with this user. Only admins can see user roles.",
+        require_admin=True,
+    )
+    def get_user_roles(
+        self,
+        user_id: UserIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+    ) -> RoleListResponse:
+        return self.service.get_user_roles(trans=trans, user_id=user_id)
+
 
 class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController, UsesFormDefinitionsMixin):
     service: UsersService = depends(UsersService)
@@ -818,7 +832,11 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
                     "type": "text",
                     "label": "Email address",
                     "value": email,
-                    "help": "If you change your email address you will receive an activation link in the new mailbox and you have to activate your account by visiting it.",
+                    "help": (
+                        "If you change your email address you will receive an activation link in the new mailbox and you have to activate your account by visiting it."
+                        if trans.app.config.user_activation_on
+                        else ""
+                    ),
                 }
             )
         if is_galaxy_app:

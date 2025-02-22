@@ -1,3 +1,5 @@
+import "tests/jest/mockHelpPopovers";
+
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
 import { getLocalVue } from "tests/jest/helpers";
@@ -30,6 +32,12 @@ describe("JobInformation/JobInformation.vue", () => {
             }),
             http.get("/api/invocations", ({ response }) => {
                 return response(200).json([]);
+            }),
+            http.get("/api/jobs/{job_id}/console_output", ({ response }) => {
+                return response(200).json({
+                    stdout: "stdout",
+                    stderr: "stderr",
+                });
             })
         );
     });
@@ -61,8 +69,8 @@ describe("JobInformation/JobInformation.vue", () => {
         // table should exist
         expect(jobInfoTable).toBeTruthy();
         const rows = jobInfoTable.findAll("tr");
-        // should contain 9 rows
-        expect(rows.length).toBe(9);
+        // should contain 10 rows
+        expect(rows.length).toBe(10);
     });
 
     it("stdout and stderr should be rendered", async () => {
@@ -90,5 +98,6 @@ describe("JobInformation/JobInformation.vue", () => {
             { id: "encoded-copied-from-job-id", backend_key: "copied_from_job_id" },
         ];
         verifyValues(rendered_entries, jobInfoTable, jobResponse);
+        expect(wrapper.find('td[data-description="galaxy-job-state"]').exists()).toBe(true);
     });
 });

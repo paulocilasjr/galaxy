@@ -195,11 +195,16 @@ defineExpose({
                     <span>before running this workflow.</span>
                 </BAlert>
                 <div v-else>
-                    <BAlert v-if="submissionError" class="mb-4" variant="danger" show>
+                    <BAlert
+                        v-if="submissionError"
+                        class="mb-4"
+                        variant="danger"
+                        data-description="workflow run error"
+                        show>
                         Workflow submission failed: {{ submissionError }}
                     </BAlert>
                     <WorkflowRunFormSimple
-                        v-else-if="fromVariant === 'simple'"
+                        v-if="fromVariant === 'simple'"
                         :model="workflowModel"
                         :target-history="simpleFormTargetHistory"
                         :use-job-cache="simpleFormUseJobCache"

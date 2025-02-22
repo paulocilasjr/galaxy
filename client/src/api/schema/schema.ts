@@ -21,6 +21,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query
+         * @description We're off to ask the wizard
+         */
+        post: operations["query_api_chat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/{job_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Feedback
+         * @description Provide feedback on the chatbot response.
+         */
+        put: operations["feedback_api_chat__job_id__feedback_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/configuration": {
         parameters: {
             query?: never;
@@ -2594,6 +2634,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/invocations/{invocation_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Invocation Metrics */
+        get: operations["get_invocation_metrics_api_invocations__invocation_id__metrics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invocations/{invocation_id}/prepare_store_download": {
         parameters: {
             query?: never;
@@ -2637,6 +2694,23 @@ export interface paths {
         };
         /** Get PDF summarizing invocation for reporting. */
         get: operations["show_invocation_report_pdf_api_invocations__invocation_id__report_pdf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/invocations/{invocation_id}/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a description modeling an API request to invoke this workflow - this is recreated and will be more specific in some ways than the initial creation request. */
+        get: operations["invocation_as_request_api_invocations__invocation_id__request_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2796,6 +2870,28 @@ export interface paths {
         };
         /** Check inputs and job for common potential problems to aid in error reporting */
         get: operations["check_common_problems_api_jobs__job_id__common_problems_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/console_output": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Returns STDOUT and STDERR from the tool running in a specific job.
+         * @description Get the stdout and/or stderr from the tool running in a specific job. The position parameters are the index
+         *     of where to start reading stdout/stderr. The length parameters control how much
+         *     stdout/stderr is read.
+         */
+        get: operations["get_console_output_api_jobs__job_id__console_output_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4699,6 +4795,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/users/{user_id}/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get User Roles
+         * @description Return a list of roles associated with this user. Only admins can see user roles.
+         */
+        get: operations["get_user_roles_api_users__user_id__roles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/{user_id}/send_activation_email": {
         parameters: {
             query?: never;
@@ -5938,7 +6054,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "History";
             /**
@@ -6055,7 +6170,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "History";
             /**
@@ -6307,7 +6421,6 @@ export interface components {
              * Category
              * @default broadcast
              * @constant
-             * @enum {string}
              */
             category: "broadcast";
             /**
@@ -6350,7 +6463,6 @@ export interface components {
              * Category
              * @default broadcast
              * @constant
-             * @enum {string}
              */
             category: "broadcast";
             content: components["schemas"]["BroadcastNotificationContent"];
@@ -6399,7 +6511,6 @@ export interface components {
             /**
              * Browsable
              * @constant
-             * @enum {boolean}
              */
             browsable: true;
             /**
@@ -6470,7 +6581,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "change_datatype";
         };
@@ -6481,9 +6591,22 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "change_dbkey";
+        };
+        /** ChatPayload */
+        ChatPayload: {
+            /**
+             * Context
+             * @description The context for the chatbot.
+             * @default
+             */
+            context: string | null;
+            /**
+             * Query
+             * @description The query to be sent to the chatbot.
+             */
+            query: string;
         };
         /** CheckForUpdatesResponse */
         CheckForUpdatesResponse: {
@@ -7146,7 +7269,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Quota";
             /**
@@ -7238,7 +7360,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "User";
             /**
@@ -7668,7 +7789,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "DatasetCollectionElement";
             /**
@@ -7719,7 +7839,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "DatasetCollection";
             /**
@@ -7825,7 +7944,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "HistoryDatasetCollectionAssociation";
             tags: components["schemas"]["TagCollection"];
@@ -7872,7 +7990,7 @@ export interface components {
              * Hash Function
              * @description The hash function used to generate the hash.
              */
-            hash_function: components["schemas"]["HashFunctionNames"];
+            hash_function: components["schemas"]["HashFunctionNameEnum"];
             /**
              * Hash Value
              * @description The hash value.
@@ -7888,7 +8006,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "DatasetHash";
         };
@@ -8190,7 +8307,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "DefaultQuotaAssociation";
             /**
@@ -8446,7 +8562,7 @@ export interface components {
         };
         /** DisplayApplication */
         DisplayApplication: {
-            /** Filename  */
+            /** Filename */
             filename_: string;
             /** Id */
             id: string;
@@ -8605,7 +8721,6 @@ export interface components {
              * Source
              * @description The source of this dataset, which in the case of the model can only be `hdca`.
              * @constant
-             * @enum {string}
              */
             src: "hdca";
         };
@@ -8692,7 +8807,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Job";
             /**
@@ -8736,6 +8850,11 @@ export interface components {
              * @description The email of the user that owns this job. Only the owner of the job and administrators can see this value.
              */
             user_email?: string | null;
+            /**
+             * User Id
+             * @description User ID of user that ran this job
+             */
+            user_id?: string | null;
         };
         /** EncodedJobParameterHistoryItem */
         EncodedJobParameterHistoryItem: {
@@ -8816,6 +8935,8 @@ export interface components {
             error?: string | null;
             /** Success */
             success: boolean;
+            /** Uri */
+            uri?: string | null;
         };
         /**
          * ExportObjectType
@@ -8922,7 +9043,6 @@ export interface components {
         };
         /**
          * FavoriteObjectType
-         * @constant
          * @enum {string}
          */
         FavoriteObjectType: "tools";
@@ -9348,7 +9468,6 @@ export interface components {
             /**
              * Src
              * @constant
-             * @enum {string}
              */
             src: "ftp_import";
             /** Tags */
@@ -9392,7 +9511,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Group";
             /**
@@ -9412,7 +9530,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "GroupQuotaAssociation";
         };
@@ -9430,7 +9547,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Group";
             /** name of the group */
@@ -9769,7 +9885,6 @@ export interface components {
              * @description TODO
              * @default file
              * @constant
-             * @enum {string}
              */
             api_type: "file";
             /**
@@ -9876,7 +9991,6 @@ export interface components {
              * History Content Type
              * @description This is always `dataset` for datasets.
              * @constant
-             * @enum {string}
              */
             history_content_type: "dataset";
             /**
@@ -9913,7 +10027,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "HistoryDatasetAssociation";
             /**
@@ -9962,7 +10075,6 @@ export interface components {
              * @description This is always `file` for datasets.
              * @default file
              * @constant
-             * @enum {string}
              */
             type: "file";
             /**
@@ -10011,7 +10123,6 @@ export interface components {
             /**
              * Accessible
              * @constant
-             * @enum {boolean}
              */
             accessible: false;
             /** Copied From Ldda Id */
@@ -10035,7 +10146,6 @@ export interface components {
              * History Content Type
              * @description This is always `dataset` for datasets.
              * @constant
-             * @enum {string}
              */
             history_content_type: "dataset";
             /**
@@ -10115,7 +10225,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "HistoryDatasetAssociation";
             /** Purged */
@@ -10173,7 +10282,6 @@ export interface components {
              * History Content Type
              * @description This is always `dataset` for datasets.
              * @constant
-             * @enum {string}
              */
             history_content_type: "dataset";
             /**
@@ -10420,7 +10528,6 @@ export interface components {
              * History Content Type
              * @description This is always `dataset_collection` for dataset collections.
              * @constant
-             * @enum {string}
              */
             history_content_type: "dataset_collection";
             /**
@@ -10457,7 +10564,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "HistoryDatasetCollectionAssociation";
             /**
@@ -10486,7 +10592,6 @@ export interface components {
              * @description This is always `collection` for dataset collections.
              * @default collection
              * @constant
-             * @enum {string}
              */
             type: "collection";
             /**
@@ -10560,7 +10665,6 @@ export interface components {
              * History Content Type
              * @description This is always `dataset_collection` for dataset collections.
              * @constant
-             * @enum {string}
              */
             history_content_type: "dataset_collection";
             /**
@@ -10592,7 +10696,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "HistoryDatasetCollectionAssociation";
             /**
@@ -10616,7 +10719,6 @@ export interface components {
              * @description This is always `collection` for dataset collections.
              * @default collection
              * @constant
-             * @enum {string}
              */
             type: "collection";
             /**
@@ -10733,16 +10835,10 @@ export interface components {
         };
         /**
          * HashFunctionNameEnum
-         * @description Particular pieces of information that can be requested for a dataset.
+         * @description Hash function names that can be used to generate checksums for files.
          * @enum {string}
          */
         HashFunctionNameEnum: "MD5" | "SHA-1" | "SHA-256" | "SHA-512";
-        /**
-         * HashFunctionNames
-         * @description Hash function names that can be used to generate checksums for datasets.
-         * @enum {string}
-         */
-        HashFunctionNames: "MD5" | "SHA-1" | "SHA-256" | "SHA-512";
         /** HdaDestination */
         HdaDestination: {
             /**
@@ -10811,7 +10907,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "hdca";
         };
@@ -11249,7 +11344,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "History";
             /**
@@ -11364,7 +11458,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "History";
             /**
@@ -11699,7 +11792,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "ToolShedRepository";
             /**
@@ -11902,6 +11994,21 @@ export interface components {
              */
             workflow_step_id: number;
         };
+        /** InvocationFailureWorkflowParameterInvalidResponse */
+        InvocationFailureWorkflowParameterInvalidResponse: {
+            /**
+             * Details
+             * @description Message raised by validator
+             */
+            details: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            reason: "workflow_parameter_invalid";
+            /** Workflow parameter step that failed validation */
+            workflow_step_id: number;
+        };
         /** InvocationInput */
         InvocationInput: {
             /**
@@ -11956,7 +12063,6 @@ export interface components {
             /**
              * Model
              * @constant
-             * @enum {string}
              */
             model: "WorkflowInvocation";
             /**
@@ -11983,7 +12089,8 @@ export interface components {
             | components["schemas"]["InvocationFailureExpressionEvaluationFailedResponse"]
             | components["schemas"]["InvocationFailureWhenNotBooleanResponse"]
             | components["schemas"]["InvocationUnexpectedFailureResponse"]
-            | components["schemas"]["InvocationEvaluationWarningWorkflowOutputNotFoundResponse"];
+            | components["schemas"]["InvocationEvaluationWarningWorkflowOutputNotFoundResponse"]
+            | components["schemas"]["InvocationFailureWorkflowParameterInvalidResponse"];
         /** InvocationOutput */
         InvocationOutput: {
             /**
@@ -11995,7 +12102,6 @@ export interface components {
              * Source
              * @description Source model of the output dataset.
              * @constant
-             * @enum {string}
              */
             src: "hda";
             /**
@@ -12016,7 +12122,6 @@ export interface components {
              * Source
              * @description Source model of the output dataset collection.
              * @constant
-             * @enum {string}
              */
             src: "hdca";
             /**
@@ -12091,7 +12196,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Report";
             /**
@@ -12099,7 +12203,6 @@ export interface components {
              * @description Format of the invocation report.
              * @default markdown
              * @constant
-             * @enum {string}
              */
             render_format: "markdown";
             /**
@@ -12172,7 +12275,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "WorkflowInvocationStep";
             /**
@@ -12238,7 +12340,6 @@ export interface components {
              * @description The source model of the output.
              * @default hdca
              * @constant
-             * @enum {string}
              */
             src: "hdca";
         };
@@ -12253,7 +12354,6 @@ export interface components {
             /**
              * Model
              * @constant
-             * @enum {string}
              */
             model: "ImplicitCollectionJobs";
             /**
@@ -12280,7 +12380,6 @@ export interface components {
             /**
              * Model
              * @constant
-             * @enum {string}
              */
             model: "Job";
             /**
@@ -12307,7 +12406,6 @@ export interface components {
             /**
              * Model
              * @constant
-             * @enum {string}
              */
             model: "WorkflowInvocationStep";
             /**
@@ -12336,7 +12434,6 @@ export interface components {
              * @description The source model of the output.
              * @default hda
              * @constant
-             * @enum {string}
              */
             src: "hda";
             /**
@@ -12391,8 +12488,9 @@ export interface components {
              */
             batch: boolean | null;
             /**
-             * Dataset Map
-             * @description TODO
+             * Legacy Dataset Map
+             * @deprecated
+             * @description An older alternative to specifying inputs using database IDs, do not use this and use inputs instead
              * @default {}
              */
             ds_map: {
@@ -12415,12 +12513,12 @@ export interface components {
             history_id?: string | null;
             /**
              * Inputs
-             * @description TODO
+             * @description Specify values for formal inputs to the workflow
              */
             inputs?: Record<string, never> | null;
             /**
              * Inputs By
-             * @description How inputs maps to inputs (datasets/collections) to workflows steps.
+             * @description How the 'inputs' field maps its inputs (datasets/collections/step parameters) to workflows steps.
              */
             inputs_by?: string | null;
             /**
@@ -12447,38 +12545,37 @@ export interface components {
              */
             no_add_to_history: boolean | null;
             /**
-             * Parameters
-             * @description The raw parameters for the workflow invocation.
+             * Legacy Step Parameters
+             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead.
              * @default {}
              */
             parameters: Record<string, never> | null;
             /**
-             * Parameters Normalized
-             * @description Indicates if parameters are already normalized for workflow invocation.
+             * Legacy Step Parameters Normalized
+             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
              * @default false
              */
             parameters_normalized: boolean | null;
             /**
              * Preferred Intermediate Object Store ID
-             * @description The ID of the ? object store that should be used to store ? datasets in this history.
+             * @description The ID of the object store that should be used to store the intermediate datasets of this workflow -  - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences
              */
             preferred_intermediate_object_store_id?: string | null;
             /**
              * Preferred Object Store ID
-             * @description The ID of the object store that should be used to store new datasets in this history.
+             * @description The ID of the object store that should be used to store all datasets (can instead specify object store IDs for intermediate and outputs datasts separately) -  - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences
              */
             preferred_object_store_id?: string | null;
             /**
              * Preferred Outputs Object Store ID
-             * @description The ID of the object store that should be used to store ? datasets in this history.
+             * @description The ID of the object store that should be used to store the marked output datasets of this workflow - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences.
              */
             preferred_outputs_object_store_id?: string | null;
             /**
              * Replacement Parameters
-             * @description TODO
-             * @default {}
+             * @description Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters
              */
-            replacement_params: Record<string, never> | null;
+            replacement_params?: Record<string, never> | null;
             /**
              * Require Exact Tool Versions
              * @description If true, exact tool versions are required for workflow invocation.
@@ -12487,20 +12584,14 @@ export interface components {
             require_exact_tool_versions: boolean | null;
             /**
              * Resource Parameters
-             * @description TODO
-             * @default {}
+             * @description If a workflow_resource_params_file file is defined and the target workflow is configured to consumer resource parameters, they can be specified with this parameter. See https://github.com/galaxyproject/galaxy/pull/4830 for more information.
              */
-            resource_params: Record<string, never> | null;
+            resource_params?: Record<string, never> | null;
             /**
              * Scheduler
              * @description Scheduler to use for workflow invocation.
              */
             scheduler?: string | null;
-            /**
-             * Step Parameters
-             * @description TODO
-             */
-            step_parameters?: Record<string, never> | null;
             /**
              * Use cached job
              * @description Indicated whether to use a cached job for workflow invocation.
@@ -12599,7 +12690,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Job";
             /**
@@ -12618,6 +12708,24 @@ export interface components {
              * @description The last time and date this item was updated.
              */
             update_time: string;
+        };
+        /** JobConsoleOutput */
+        JobConsoleOutput: {
+            /**
+             * Job State
+             * @description The current job's state
+             */
+            state?: components["schemas"]["JobState"] | null;
+            /**
+             * STDERR
+             * @description Tool STDERR from job.
+             */
+            stderr?: string | null;
+            /**
+             * STDOUT
+             * @description Tool STDOUT from job.
+             */
+            stdout?: string | null;
         };
         /** JobDestinationParams */
         JobDestinationParams: {
@@ -12764,7 +12872,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Job";
             /**
@@ -13032,7 +13139,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Job";
             /**
@@ -13119,7 +13225,7 @@ export interface components {
             page_limit: number;
             /**
              * Roles
-             * @description A list available roles that can be assigned to a particular permission.
+             * @description A list containing available roles that can be assigned to a particular permission.
              */
             roles: components["schemas"]["BasicRoleModel"][];
             /**
@@ -13228,7 +13334,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "LibraryDatasetDatasetAssociation";
             /** Name */
@@ -13512,7 +13617,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "LibraryDataset";
             /** Name */
@@ -13557,7 +13661,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "LibraryFolder";
             /** Name */
@@ -13698,7 +13801,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "LibraryFolder";
             /**
@@ -13746,7 +13848,6 @@ export interface components {
         };
         /**
          * LibraryFolderPermissionAction
-         * @constant
          * @enum {string}
          */
         LibraryFolderPermissionAction: "set_permissions";
@@ -13805,7 +13906,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Library";
             /**
@@ -13916,7 +14016,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Library";
             /**
@@ -14050,7 +14149,6 @@ export interface components {
          * @description These notification categories cannot be opt-out by the user.
          *
          *     The user will always receive notifications from these categories.
-         * @constant
          * @enum {string}
          */
         MandatoryNotificationCategory: "broadcast";
@@ -14070,21 +14168,6 @@ export interface components {
              * @description The source of the content. Can be other history element to be copied or library elements.
              */
             source: components["schemas"]["DatasetSourceType"];
-            /**
-             * Validate hashes
-             * @description Set to true to enable dataset validation during materialization.
-             * @default false
-             */
-            validate_hashes: boolean;
-        };
-        /** MaterializeDatasetOptions */
-        MaterializeDatasetOptions: {
-            /**
-             * Validate hashes
-             * @description Set to true to enable dataset validation during materialization.
-             * @default false
-             */
-            validate_hashes: boolean;
         };
         /** MessageExceptionModel */
         MessageExceptionModel: {
@@ -14695,7 +14778,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Page";
             /**
@@ -14772,7 +14854,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Page";
             /**
@@ -15172,7 +15253,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Quota";
             /**
@@ -15225,7 +15305,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Quota";
             /**
@@ -15567,7 +15646,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Role";
             /**
@@ -16100,7 +16178,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Job";
             /**
@@ -16164,6 +16241,11 @@ export interface components {
              * @description The email of the user that owns this job. Only the owner of the job and administrators can see this value.
              */
             user_email?: string | null;
+            /**
+             * User Id
+             * @description User ID of user that ran this job
+             */
+            user_id?: string | null;
         };
         /**
          * Src
@@ -16331,7 +16413,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "StoredWorkflow";
             /**
@@ -16538,7 +16619,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "boolean";
         };
@@ -16558,7 +16638,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "integer";
         };
@@ -16575,7 +16654,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "path_component";
         };
@@ -16595,7 +16673,6 @@ export interface components {
             /**
              * Type
              * @constant
-             * @enum {string}
              */
             type: "string";
         };
@@ -17515,7 +17592,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "User";
             /**
@@ -17654,7 +17730,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "UserQuotaAssociation";
             /**
@@ -17825,7 +17900,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "VisualizationRevision";
             /**
@@ -17872,7 +17946,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "Visualization";
             /**
@@ -18075,7 +18148,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "WorkflowInvocation";
             /**
@@ -18144,7 +18216,6 @@ export interface components {
              * Model class
              * @description The name of the database model class.
              * @constant
-             * @enum {string}
              */
             model_class: "WorkflowInvocation";
             /**
@@ -18194,6 +18265,82 @@ export interface components {
              */
             workflow_id: string;
         };
+        /**
+         * WorkflowInvocationRequestModel
+         * @description Model a workflow invocation request (InvokeWorkflowPayload) for an existing invocation.
+         */
+        WorkflowInvocationRequestModel: {
+            /**
+             * History ID
+             * @description The encoded history id the workflow was run in.
+             */
+            history_id: string;
+            /**
+             * Inputs
+             * @description Values for inputs
+             */
+            inputs: Record<string, never>;
+            /**
+             * Inputs by
+             * @description How the 'inputs' field maps its inputs (datasets/collections/step parameters) to workflows steps.
+             */
+            inputs_by: string;
+            /**
+             * Is instance
+             * @description This API yields a particular workflow instance, newer workflows belonging to the same storedworkflow may have different state.
+             * @default true
+             * @constant
+             */
+            instance: true;
+            /**
+             * Legacy Step Parameters
+             * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. If these are set, the workflow was not executed in a best-practice fashion and we the resulting invocation request may not fully reflect the executed workflow state.
+             */
+            parameters?: Record<string, never> | null;
+            /**
+             * Legacy Step Parameters Normalized
+             * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
+             * @default true
+             * @constant
+             */
+            parameters_normalized: true;
+            /**
+             * Preferred Intermediate Object Store ID
+             * @description The ID of the object store that should be used to store the intermediate datasets of this workflow -  - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences
+             */
+            preferred_intermediate_object_store_id?: string | null;
+            /**
+             * Preferred Object Store ID
+             * @description The ID of the object store that should be used to store all datasets (can instead specify object store IDs for intermediate and outputs datasts separately) -  - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences
+             */
+            preferred_object_store_id?: string | null;
+            /**
+             * Preferred Outputs Object Store ID
+             * @description The ID of the object store that should be used to store the marked output datasets of this workflow - Galaxy's job configuration may override this in some cases but this workflow preference will override tool and user preferences.
+             */
+            preferred_outputs_object_store_id?: string | null;
+            /**
+             * Replacement Parameters
+             * @description Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters
+             */
+            replacement_params?: Record<string, never> | null;
+            /**
+             * Resource Parameters
+             * @description If a workflow_resource_params_file file is defined and the target workflow is configured to consumer resource parameters, they can be specified with this parameter. See https://github.com/galaxyproject/galaxy/pull/4830 for more information.
+             */
+            resource_params?: Record<string, never> | null;
+            /**
+             * Use cached job
+             * @description Indicated whether to use a cached job for workflow invocation.
+             * @default false
+             */
+            use_cached_job: boolean;
+            /**
+             * Workflow ID
+             * @description The encoded Workflow ID associated with the invocation.
+             */
+            workflow_id: string;
+        };
         /** WorkflowInvocationResponse */
         WorkflowInvocationResponse:
             | components["schemas"]["WorkflowInvocationElementView"]
@@ -18223,6 +18370,51 @@ export interface components {
             states: {
                 [key: string]: number;
             };
+        };
+        /**
+         * WorkflowJobMetric
+         * @example {
+         *       "name": "start_epoch",
+         *       "plugin": "core",
+         *       "raw_value": "1614261340.0000000",
+         *       "title": "Job Start Time",
+         *       "value": "2021-02-25 14:55:40"
+         *     }
+         */
+        WorkflowJobMetric: {
+            /** Job Id */
+            job_id: string;
+            /**
+             * Name
+             * @description The name of the metric variable.
+             */
+            name: string;
+            /**
+             * Plugin
+             * @description The instrumenter plugin that generated this metric.
+             */
+            plugin: string;
+            /**
+             * Raw Value
+             * @description The raw value of the metric as a string.
+             */
+            raw_value: string;
+            /** Step Index */
+            step_index: number;
+            /** Step Label */
+            step_label: string | null;
+            /**
+             * Title
+             * @description A descriptive title for this metric.
+             */
+            title: string;
+            /** Tool Id */
+            tool_id: string;
+            /**
+             * Value
+             * @description The textual representation of the metric value.
+             */
+            value: string;
         };
         /** WorkflowLandingRequest */
         WorkflowLandingRequest: {
@@ -18432,6 +18624,98 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["APIKeyResponse"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    query_api_chat_post: {
+        parameters: {
+            query: {
+                job_id: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string;
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    feedback_api_chat__job_id__feedback_put: {
+        parameters: {
+            query: {
+                feedback: number;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                job_id: string | null;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": number | null;
                 };
             };
             /** @description Request Error */
@@ -24322,11 +24606,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["MaterializeDatasetOptions"] | null;
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
@@ -26928,6 +27208,50 @@ export interface operations {
             };
         };
     };
+    get_invocation_metrics_api_invocations__invocation_id__metrics_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded database identifier of the Invocation. */
+                invocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowJobMetric"][];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     prepare_store_download_api_invocations__invocation_id__prepare_store_download_post: {
         parameters: {
             query?: never;
@@ -27041,6 +27365,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    invocation_as_request_api_invocations__invocation_id__request_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The encoded database identifier of the Invocation. */
+                invocation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowInvocationRequestModel"];
+                };
             };
             /** @description Request Error */
             "4XX": {
@@ -27617,6 +27985,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobInputSummary"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    get_console_output_api_jobs__job_id__console_output_get: {
+        parameters: {
+            query: {
+                stdout_position: number;
+                stdout_length: number;
+                stderr_position: number;
+                stderr_length: number;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobConsoleOutput"];
                 };
             };
             /** @description Request Error */
@@ -28544,7 +28960,6 @@ export interface operations {
             };
             path: {
                 library_id: string;
-                /** @example F0123456789ABCDEF */
                 id: string;
             };
             cookie?: never;
@@ -33614,6 +34029,50 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    get_user_roles_api_users__user_id__roles_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the user. */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoleListResponse"];
+                };
             };
             /** @description Request Error */
             "4XX": {

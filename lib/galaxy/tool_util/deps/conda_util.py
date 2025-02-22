@@ -48,7 +48,7 @@ IS_OS_X = sys.platform == "darwin"
 VERSIONED_ENV_DIR_NAME = re.compile(r"__(.*)@(.*)")
 UNVERSIONED_ENV_DIR_NAME = re.compile(r"__(.*)@_uv_")
 USE_PATH_EXEC_DEFAULT = False
-CONDA_PACKAGE_SPECS = ("conda>=23.7.0", "conda-libmamba-solver", "'pyopenssl>=22.1.0'")
+CONDA_PACKAGE_SPECS = ("conda>=23.7.0", "conda-libmamba-solver", "pyopenssl>=22.1.0")
 CONDA_BUILD_SPECS = ("conda-build>=3.22.0",)
 USE_LOCAL_DEFAULT = False
 
@@ -425,7 +425,7 @@ class CondaTarget:
     def __init__(
         self, package: str, version: Optional[str] = None, build: Optional[str] = None, channel: Optional[str] = None
     ) -> None:
-        if SHELL_UNSAFE_PATTERN.search(package) is not None:
+        if SHELL_UNSAFE_PATTERN.search(package) is not None or not package:
             raise ValueError(f"Invalid package [{package}] encountered.")
         self.capitalized_package = package
         self.package = package.lower()
