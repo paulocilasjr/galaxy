@@ -161,5 +161,6 @@
     <tool file="ludwig/ludwig_train.xml" />
     <tool file="ludwig/ludwig_visualize.xml" />
     <tool file="ludwig/ludwig_mil.xml" />
+    <tool file="ludwig/tiling_pyhist.xml" />
   </section>
   </toolbox>
