@@ -6,7 +6,7 @@
     <expand macro="python_requirements_gpu" />
     <expand macro="macro_stdio" />
     <version_command>echo "@VERSION@"</version_command>
-    <command>
+    <command><![CDATA[
         python "$__tool_directory__/ludwig_mil.py"
         --embeddings_csv "$embeddings_csv"
         --metadata_csv "$metadata_csv"
@@ -29,7 +29,7 @@
         #if $by_sample
         --by_sample
         #end if
-    </command>
+    ]]></command>
 
     <inputs>
         <param name="embeddings_csv" type="data" format="csv" label="Embeddings CSV File"/>
