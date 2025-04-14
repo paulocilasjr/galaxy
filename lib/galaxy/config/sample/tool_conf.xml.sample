@@ -163,4 +163,7 @@
     <tool file="ludwig/ludwig_mil.xml" />
     <tool file="ludwig/tiling_pyhist.xml" />
   </section>
+  <section id="tiling" name="Tiling tools">
+    <tool file="tiling_pyhist/tiling_pyhist.xml" />
+  </section>
   </toolbox>

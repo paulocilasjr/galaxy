@@ -7,9 +7,15 @@
 
     <token name="@PROFILE@">21.05</token>
 
-    <xml name="ludwig-embeddings">
+    <xml name="embeddings_requirements">
         <requirements>
-            <container type="docker">ludwig-embeddings</container>
+            <container type="docker">ludwig-docker</container>
+        </requirements>
+    </xml>
+
+    <xml name="embedding_bags">
+        <requirements>
+            <container type="docker">galaxy-tile-embed-mil:latest</container>
         </requirements>
     </xml>
 
