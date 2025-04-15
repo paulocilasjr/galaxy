@@ -3,9 +3,11 @@ on:
   push:
     paths-ignore:
       - 'doc/**'
+      - 'packages/**'
   pull_request:
     paths-ignore:
       - 'doc/**'
+      - 'packages/**'
 env:
   YARN_INSTALL_OPTS: --frozen-lockfile
 concurrency:
@@ -18,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8', '3.13']
+        python-version: ['3.9', '3.13']
     defaults:
       run:
         shell: bash -l {0}

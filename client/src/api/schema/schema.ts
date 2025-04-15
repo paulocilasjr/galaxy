@@ -219,6 +219,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dataset_collections/{hdca_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Returns detailed information about the given collection. */
+        get: operations["show_api_dataset_collections__hdca_id__get"];
+        /**
+         * Updates the values for the history dataset (HDA) item with the given ``ID``.
+         * @description Updates the values for the history content item with the given ``ID``.
+         */
+        put: operations["dataset_collections__update_collection"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dataset_collections/{hdca_id}/attributes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Returns `dbkey`/`extension` attributes for all the collection elements. */
+        get: operations["attributes_api_dataset_collections__hdca_id__attributes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/dataset_collections/{hdca_id}/contents/{parent_id}": {
         parameters: {
             query?: never;
@@ -236,41 +274,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/dataset_collections/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Returns detailed information about the given collection. */
-        get: operations["show_api_dataset_collections__id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/dataset_collections/{id}/attributes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Returns `dbkey`/`extension` attributes for all the collection elements. */
-        get: operations["attributes_api_dataset_collections__id__attributes_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/dataset_collections/{id}/copy": {
+    "/api/dataset_collections/{hdca_id}/copy": {
         parameters: {
             query?: never;
             header?: never;
@@ -280,14 +284,14 @@ export interface paths {
         get?: never;
         put?: never;
         /** Copy the given collection datasets to a new collection using a new `dbkey` attribute. */
-        post: operations["copy_api_dataset_collections__id__copy_post"];
+        post: operations["copy_api_dataset_collections__hdca_id__copy_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/dataset_collections/{id}/download": {
+    "/api/dataset_collections/{hdca_id}/download": {
         parameters: {
             query?: never;
             header?: never;
@@ -308,7 +312,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/dataset_collections/{id}/prepare_download": {
+    "/api/dataset_collections/{hdca_id}/prepare_download": {
         parameters: {
             query?: never;
             header?: never;
@@ -323,14 +327,14 @@ export interface paths {
          *     returned short term storage object. Progress tracking this file's creation
          *     can be tracked with the short_term_storage API.
          */
-        post: operations["prepare_collection_download_api_dataset_collections__id__prepare_download_post"];
+        post: operations["prepare_collection_download_api_dataset_collections__hdca_id__prepare_download_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/dataset_collections/{id}/suitable_converters": {
+    "/api/dataset_collections/{hdca_id}/suitable_converters": {
         parameters: {
             query?: never;
             header?: never;
@@ -338,7 +342,7 @@ export interface paths {
             cookie?: never;
         };
         /** Returns a list of applicable converters for all datatypes in the given collection. */
-        get: operations["suitable_converters_api_dataset_collections__id__suitable_converters_get"];
+        get: operations["suitable_converters_api_dataset_collections__hdca_id__suitable_converters_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1855,7 +1859,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/histories/{history_id}/contents/dataset_collections/{id}/download": {
+    "/api/histories/{history_id}/contents/dataset_collections/{hdca_id}/download": {
         parameters: {
             query?: never;
             header?: never;
@@ -3195,20 +3199,20 @@ export interface paths {
         /**
          * Return a library file or folder.
          * @deprecated
-         * @description This endpoint is deprecated. Please use GET /api/libraries/datasets/{library_id} instead.
+         * @description This endpoint is deprecated. Please use GET /api/libraries/datasets/{id} instead.
          */
         get: operations["library_content_api_libraries__library_id__contents__id__get"];
         /**
          * Update a library file or folder.
          * @deprecated
-         * @description This endpoint is deprecated. Please use PATCH /api/libraries/datasets/{library_id} instead.
+         * @description This endpoint is deprecated. Please use PATCH /api/libraries/datasets/{id} instead.
          */
         put: operations["update_api_libraries__library_id__contents__id__put"];
         post?: never;
         /**
          * Delete a library file or folder.
          * @deprecated
-         * @description This endpoint is deprecated. Please use DELETE /api/libraries/datasets/{library_id} instead.
+         * @description This endpoint is deprecated. Please use DELETE /api/libraries/datasets/{id} instead.
          */
         delete: operations["delete_api_libraries__library_id__contents__id__delete"];
         options?: never;
@@ -3578,7 +3582,7 @@ export interface paths {
         put?: never;
         /**
          * Create a page and return summary information.
-         * @description Get a list with details of all Pages available to the user.
+         * @description Creates a new Page.
          */
         post: operations["create_api_pages_post"];
         delete?: never;
@@ -3599,7 +3603,11 @@ export interface paths {
          * @description Return summary information about a specific Page and the content of the last revision.
          */
         get: operations["show_api_pages__id__get"];
-        put?: never;
+        /**
+         * Update a page and return summary information.
+         * @description Updates an existing Page.
+         */
+        put: operations["update_api_pages__id__put"];
         post?: never;
         /**
          * Marks the specific Page as deleted.
@@ -4259,6 +4267,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tasks/{task_id}/result": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get result message for task ID
+         * @description If the task is still running, pending, or is waiting for retry then the result is an empty string.
+         *     If the task failed, the result is an error message.
+         */
+        get: operations["get_result_api_tasks__task_id__result_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tasks/{task_id}/state": {
         parameters: {
             query?: never;
@@ -4443,6 +4472,29 @@ export interface paths {
         put?: never;
         /** Upload files to Galaxy */
         post: operations["fetch_form_api_tools_fetch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tools/{tool_id}/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the icon image associated with a tool
+         * @description Returns the icon image associated with a tool.
+         *
+         *     The icon image is served with caching headers to allow for efficient
+         *     client-side caching. The icon image is expected to be in PNG format.
+         */
+        get: operations["get_icon_api_tools__tool_id__icon_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5957,7 +6009,9 @@ export interface components {
             /** @description The location of the step in the Galaxy workflow editor. */
             position?: components["schemas"]["Position"] | null;
             /** Tool State */
-            tool_state?: Record<string, never> | null;
+            tool_state?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Type
              * @description Module type of the step to add, see galaxy.workflow.modules for available types.
@@ -6742,6 +6796,10 @@ export interface components {
             hashes?: components["schemas"]["FetchDatasetHash"][] | null;
             /** Info */
             info?: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** Name */
             name?: string | number | boolean | null;
             /**
@@ -6913,7 +6971,9 @@ export interface components {
             /** Store Content Uri */
             store_content_uri?: string | null;
             /** Store Dict */
-            store_dict?: Record<string, never> | null;
+            store_dict?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CreateHistoryContentPayload */
         CreateHistoryContentPayload: {
@@ -6995,7 +7055,9 @@ export interface components {
             /** Store Content Uri */
             store_content_uri?: string | null;
             /** Store Dict */
-            store_dict?: Record<string, never> | null;
+            store_dict?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CreateInstancePayload */
         CreateInstancePayload: {
@@ -7046,7 +7108,9 @@ export interface components {
             /** Store Content Uri */
             store_content_uri?: string | null;
             /** Store Dict */
-            store_dict?: Record<string, never> | null;
+            store_dict?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * View
              * @description The name of the view used to serialize this item. This will return a predefined set of attributes of the item.
@@ -7059,7 +7123,9 @@ export interface components {
             /** Store Content Uri */
             store_content_uri?: string | null;
             /** Store Dict */
-            store_dict?: Record<string, never> | null;
+            store_dict?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** CreateLibraryFilePayload */
         CreateLibraryFilePayload: {
@@ -7194,7 +7260,7 @@ export interface components {
             invocation_id?: string | null;
             /**
              * Identifier
-             * @description The title slug for the page URL, must be unique.
+             * @description The identifying slug for the page URL, must be unique.
              */
             slug: string;
             /**
@@ -7304,7 +7370,9 @@ export interface components {
              */
             public: boolean;
             /** Request State */
-            request_state?: Record<string, never> | null;
+            request_state?: {
+                [key: string]: unknown;
+            } | null;
             /** Workflow Id */
             workflow_id: string;
             /**
@@ -8072,7 +8140,7 @@ export interface components {
              * Transform
              * @description The transformations applied to the dataset source.
              */
-            transform?: unknown[] | null;
+            transform?: components["schemas"]["DatasetSourceTransform"][] | null;
         };
         /** DatasetSourceId */
         DatasetSourceId: {
@@ -8087,6 +8155,24 @@ export interface components {
              */
             src: components["schemas"]["DatasetSourceType"];
         };
+        /** DatasetSourceTransform */
+        DatasetSourceTransform: {
+            /**
+             * Action
+             * @description Action that was applied to dataset source content to transform it into the dataset
+             */
+            action: components["schemas"]["DatasetSourceTransformActionType"];
+            /**
+             * Datatype Extension
+             * @description If action is 'datatype_groom', this is the datatype that was used to find and run the grooming code as part of the transform action.
+             */
+            datatype_ext?: string | null;
+        };
+        /**
+         * DatasetSourceTransformActionType
+         * @enum {string}
+         */
+        DatasetSourceTransformActionType: "to_posix_lines" | "spaces_to_tabs" | "datatype_groom";
         /**
          * DatasetSourceType
          * @enum {string}
@@ -8130,7 +8216,9 @@ export interface components {
              * Hashes
              * @description The file contents hashes associated with the supplied dataset instance.
              */
-            hashes: Record<string, never>[];
+            hashes: {
+                [key: string]: unknown;
+            }[];
             /**
              * Name
              * @description The display name of the destination ObjectStore for this dataset.
@@ -8146,6 +8234,11 @@ export interface components {
              * @description The percentage indicating how full the store is.
              */
             percent_used: number | null;
+            /**
+             * Private
+             * @description Indicator of whether the objectstore is marked as private.
+             */
+            private: boolean;
             /** @description Information about quota sources around dataset storage. */
             quota: components["schemas"]["ConcreteObjectStoreQuotaSourceDetails"];
             /**
@@ -8162,7 +8255,9 @@ export interface components {
              * Sources
              * @description The file sources associated with the supplied dataset instance.
              */
-            sources: Record<string, never>[];
+            sources: {
+                [key: string]: unknown;
+            }[];
         };
         /** DatasetTextContentDetails */
         DatasetTextContentDetails: {
@@ -8488,7 +8583,9 @@ export interface components {
              * Preferences
              * @description Preferences of the user
              */
-            preferences: Record<string, never>;
+            preferences: {
+                [key: string]: unknown;
+            };
             /**
              * Preferred Object Store ID
              * @description The ID of the object store that should be used to store new datasets in this history.
@@ -8873,6 +8970,22 @@ export interface components {
              */
             src: components["schemas"]["DataItemSourceType"];
         };
+        /** ExitCodeJobMessage */
+        ExitCodeJobMessage: {
+            /** Code Desc */
+            code_desc?: string | null;
+            /** Desc */
+            desc: string | null;
+            /** Error Level */
+            error_level: number;
+            /** Exit Code */
+            exit_code: number;
+            /**
+             * Type
+             * @constant
+             */
+            type: "exit_code";
+        };
         /** ExportHistoryArchivePayload */
         ExportHistoryArchivePayload: {
             /**
@@ -9233,7 +9346,18 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ftp" | "posix" | "s3fs" | "azure" | "onedata" | "webdav" | "dropbox" | "googledrive";
+            type:
+                | "ftp"
+                | "posix"
+                | "s3fs"
+                | "azure"
+                | "onedata"
+                | "webdav"
+                | "dropbox"
+                | "googledrive"
+                | "elabftw"
+                | "inveniordm"
+                | "zenodo";
             /** Variables */
             variables?:
                 | (
@@ -12140,7 +12264,9 @@ export interface components {
              * Errors
              * @description Errors associated with the invocation.
              */
-            errors?: Record<string, never> | null;
+            errors?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Galaxy Version
              * @description The version of Galaxy this object was generated with.
@@ -12155,17 +12281,23 @@ export interface components {
              * Histories
              * @description Histories associated with the invocation.
              */
-            histories?: Record<string, never> | null;
+            histories?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * History dataset collections
              * @description History dataset collections associated with the invocation.
              */
-            history_dataset_collections?: Record<string, never> | null;
+            history_dataset_collections?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * History datasets
              * @description History datasets associated with the invocation.
              */
-            history_datasets?: Record<string, never> | null;
+            history_datasets?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Workflow ID
              * @description The workflow this invocation has been triggered for.
@@ -12181,12 +12313,16 @@ export interface components {
              * Invocations
              * @description Other invocations associated with the invocation.
              */
-            invocations?: Record<string, never> | null;
+            invocations?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Jobs
              * @description Jobs associated with the invocation.
              */
-            jobs?: Record<string, never> | null;
+            jobs?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Markdown
              * @description Raw galaxy-flavored markdown contents of the report.
@@ -12219,7 +12355,9 @@ export interface components {
              * Workflows
              * @description Workflows associated with the invocation.
              */
-            workflows?: Record<string, never> | null;
+            workflows?: {
+                [key: string]: unknown;
+            } | null;
         };
         /**
          * InvocationSerializationView
@@ -12494,7 +12632,9 @@ export interface components {
              * @default {}
              */
             ds_map: {
-                [key: string]: Record<string, never>;
+                [key: string]: {
+                    [key: string]: unknown;
+                };
             } | null;
             /**
              * Effective Outputs
@@ -12515,7 +12655,9 @@ export interface components {
              * Inputs
              * @description Specify values for formal inputs to the workflow
              */
-            inputs?: Record<string, never> | null;
+            inputs?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Inputs By
              * @description How the 'inputs' field maps its inputs (datasets/collections/step parameters) to workflows steps.
@@ -12549,7 +12691,9 @@ export interface components {
              * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead.
              * @default {}
              */
-            parameters: Record<string, never> | null;
+            parameters: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Legacy Step Parameters Normalized
              * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
@@ -12575,7 +12719,9 @@ export interface components {
              * Replacement Parameters
              * @description Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters
              */
-            replacement_params?: Record<string, never> | null;
+            replacement_params?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Require Exact Tool Versions
              * @description If true, exact tool versions are required for workflow invocation.
@@ -12586,7 +12732,9 @@ export interface components {
              * Resource Parameters
              * @description If a workflow_resource_params_file file is defined and the target workflow is configured to consumer resource parameters, they can be specified with this parameter. See https://github.com/galaxyproject/galaxy/pull/4830 for more information.
              */
-            resource_params?: Record<string, never> | null;
+            resource_params?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Scheduler
              * @description Scheduler to use for workflow invocation.
@@ -13162,6 +13310,11 @@ export interface components {
              * @description The email of the user that owns this job. Only the owner of the job and administrators can see this value.
              */
             user_email?: string | null;
+            /**
+             * User ID
+             * @description The encoded ID of the user that owns this job.
+             */
+            user_id?: string | null;
         };
         /**
          * LabelValuePair
@@ -13247,12 +13400,16 @@ export interface components {
             /** @description the type of item to create */
             create_type: components["schemas"]["CreateType"];
             /** list of dictionaries containing the element identifiers for the collection */
-            element_identifiers: Record<string, never>[];
+            element_identifiers: {
+                [key: string]: unknown;
+            }[];
             /**
              * Extended Metadata
              * @description sub-dictionary containing any extended metadata to associate with the item
              */
-            extended_metadata?: Record<string, never> | null;
+            extended_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Folder Id
              * @description the encoded id of the parent folder of the new item
@@ -13411,7 +13568,9 @@ export interface components {
              * Extended Metadata
              * @description sub-dictionary containing any extended metadata to associate with the item
              */
-            extended_metadata?: Record<string, never> | null;
+            extended_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /** file type */
             file_type?: string | null;
             /**
@@ -13471,7 +13630,11 @@ export interface components {
              */
             tags: string[];
             /** list of the uploaded files */
-            upload_files?: Record<string, never>[] | null;
+            upload_files?:
+                | {
+                      [key: string]: unknown;
+                  }[]
+                | null;
             /**
              * @deprecated
              * @description the method to use for uploading files
@@ -13496,7 +13659,9 @@ export interface components {
              * Extended Metadata
              * @description sub-dictionary containing any extended metadata to associate with the item
              */
-            extended_metadata?: Record<string, never> | null;
+            extended_metadata?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Folder Id
              * @description the encoded id of the parent folder of the new item
@@ -14169,6 +14334,20 @@ export interface components {
              */
             source: components["schemas"]["DatasetSourceType"];
         };
+        /** MaxDiscoveredFilesJobMessage */
+        MaxDiscoveredFilesJobMessage: {
+            /** Code Desc */
+            code_desc?: string | null;
+            /** Desc */
+            desc: string | null;
+            /** Error Level */
+            error_level: number;
+            /**
+             * Type
+             * @constant
+             */
+            type: "max_discovered_files";
+        };
         /** MessageExceptionModel */
         MessageExceptionModel: {
             /** Err Code */
@@ -14720,6 +14899,16 @@ export interface components {
         /** PageDetails */
         PageDetails: {
             /**
+             * Annotation
+             * @description An annotation to provide details or to help understand the purpose and usage of this item.
+             */
+            annotation: string | null;
+            /**
+             * Author deleted
+             * @description Whether the author of this Page has been deleted.
+             */
+            author_deleted: boolean;
+            /**
              * Content
              * @description Raw text contents of the last page revision (type dependent on content_format).
              * @default
@@ -14792,7 +14981,7 @@ export interface components {
             revision_ids: string[];
             /**
              * Identifier
-             * @description The title slug for the page URL, must be unique.
+             * @description The identifying slug for the page URL, must be unique.
              */
             slug: string;
             tags: components["schemas"]["TagCollection"];
@@ -14817,6 +15006,11 @@ export interface components {
         };
         /** PageSummary */
         PageSummary: {
+            /**
+             * Author deleted
+             * @description Whether the author of this Page has been deleted.
+             */
+            author_deleted: boolean;
             /**
              * Create Time
              * Format: date-time
@@ -14868,7 +15062,7 @@ export interface components {
             revision_ids: string[];
             /**
              * Identifier
-             * @description The title slug for the page URL, must be unique.
+             * @description The identifying slug for the page URL, must be unique.
              */
             slug: string;
             tags: components["schemas"]["TagCollection"];
@@ -15472,6 +15666,24 @@ export interface components {
             /** Workflow */
             workflow: string;
         };
+        /** RegexJobMessage */
+        RegexJobMessage: {
+            /** Code Desc */
+            code_desc?: string | null;
+            /** Desc */
+            desc: string | null;
+            /** Error Level */
+            error_level: number;
+            /** Match */
+            match: string | null;
+            /** Stream */
+            stream: string | null;
+            /**
+             * Type
+             * @constant
+             */
+            type: "regex";
+        };
         /** ReloadFeedback */
         ReloadFeedback: {
             /** Failed */
@@ -15675,7 +15887,9 @@ export interface components {
              * Inputs
              * @description The inputs of the job.
              */
-            inputs: Record<string, never>;
+            inputs: {
+                [key: string]: unknown;
+            };
             /**
              * State
              * @description Current state of the job.
@@ -16153,7 +16367,13 @@ export interface components {
              * Job Messages
              * @description List with additional information and possible reasons for a failed job.
              */
-            job_messages?: unknown[] | null;
+            job_messages?:
+                | (
+                      | components["schemas"]["ExitCodeJobMessage"]
+                      | components["schemas"]["RegexJobMessage"]
+                      | components["schemas"]["MaxDiscoveredFilesJobMessage"]
+                  )[]
+                | null;
             /**
              * Job Metrics
              * @description Collections of metrics provided by `JobInstrumenter` plugins on a particular job. Only administrators can see these metrics.
@@ -16367,6 +16587,11 @@ export interface components {
                 | (components["schemas"]["Person"] | components["schemas"]["galaxy__schema__schema__Organization"])[]
                 | null;
             /**
+             * Creator deleted
+             * @description Whether the creator of this Workflow has been deleted.
+             */
+            creator_deleted: boolean;
+            /**
              * Deleted
              * @description Whether this item is marked as deleted.
              */
@@ -16376,6 +16601,11 @@ export interface components {
              * @description The hash of the email of the creator of this workflow
              */
             email_hash: string | null;
+            /**
+             * Help
+             * @description The detailed help text for how to use the workflow and debug problems with it.
+             */
+            help: string | null;
             /**
              * Hidden
              * @description TODO
@@ -16436,6 +16666,11 @@ export interface components {
              */
             published: boolean;
             /**
+             * Readme
+             * @description The detailed markdown readme of the workflow.
+             */
+            readme: string | null;
+            /**
              * Show in Tool Panel
              * @description Whether to display this workflow in the Tools Panel.
              */
@@ -16449,7 +16684,9 @@ export interface components {
              * Source Metadata
              * @description The source metadata of the workflow.
              */
-            source_metadata: Record<string, never> | null;
+            source_metadata: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Steps
              * @description A dictionary with information about all the steps of the workflow.
@@ -16588,6 +16825,22 @@ export interface components {
             | "Page"
             | "StoredWorkflow"
             | "Visualization";
+        /**
+         * TaskResult
+         * @description Contains information about the result of an asynchronous task.
+         */
+        TaskResult: {
+            /**
+             * Result
+             * @description The result message of the task. Empty if the task is still running. If the task failed, this will contain the exception message.
+             */
+            result: string;
+            /**
+             * State
+             * @description The current state of the task.
+             */
+            state: components["schemas"]["TaskState"];
+        };
         /**
          * TaskState
          * @description Enum representing the possible states of a task.
@@ -17216,6 +17469,24 @@ export interface components {
             /** Output Label */
             output_label: string;
         };
+        /** UpdatePagePayload */
+        UpdatePagePayload: {
+            /**
+             * Annotation
+             * @description Annotation that will be attached to the page.
+             */
+            annotation?: string | null;
+            /**
+             * Identifier
+             * @description The identifying slug for the page URL, must be unique.
+             */
+            slug: string;
+            /**
+             * Title
+             * @description The name of the page.
+             */
+            title: string;
+        };
         /** UpdateQuotaParams */
         UpdateQuotaParams: {
             /**
@@ -17547,7 +17818,18 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "ftp" | "posix" | "s3fs" | "azure" | "onedata" | "webdav" | "dropbox" | "googledrive";
+            type:
+                | "ftp"
+                | "posix"
+                | "s3fs"
+                | "azure"
+                | "onedata"
+                | "webdav"
+                | "dropbox"
+                | "googledrive"
+                | "elabftw"
+                | "inveniordm"
+                | "zenodo";
             /** Uri Root */
             uri_root: string;
             /**
@@ -17783,7 +18065,9 @@ export interface components {
              * @description The config of the visualization.
              * @default {}
              */
-            config: Record<string, never> | null;
+            config: {
+                [key: string]: unknown;
+            } | null;
             /**
              * DbKey
              * @description The database key of the visualization.
@@ -17831,12 +18115,18 @@ export interface components {
              * Entry Point
              * @description The entry point of the plugin.
              */
-            entry_point: Record<string, never>;
+            entry_point: {
+                [key: string]: unknown;
+            };
             /**
              * Groups
              * @description The groups of the plugin.
              */
-            groups?: Record<string, never>[] | null;
+            groups?:
+                | {
+                      [key: string]: unknown;
+                  }[]
+                | null;
             /**
              * Href
              * @description The href of the plugin.
@@ -17861,12 +18151,16 @@ export interface components {
              * Settings
              * @description The settings of the plugin.
              */
-            settings: Record<string, never>[];
+            settings: {
+                [key: string]: unknown;
+            }[];
             /**
              * Specs
              * @description The specs of the plugin.
              */
-            specs?: Record<string, never> | null;
+            specs?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Target
              * @description The target of the plugin.
@@ -17884,7 +18178,9 @@ export interface components {
              * Config
              * @description The config of the visualization revision.
              */
-            config: Record<string, never>;
+            config: {
+                [key: string]: unknown;
+            };
             /**
              * DbKey
              * @description The database key of the visualization.
@@ -18073,7 +18369,12 @@ export interface components {
              * @description The config of the visualization.
              * @default {}
              */
-            config: Record<string, never> | string | null;
+            config:
+                | {
+                      [key: string]: unknown;
+                  }
+                | string
+                | null;
             /**
              * DbKey
              * @description The database key of the visualization.
@@ -18229,7 +18530,9 @@ export interface components {
              * Output values
              * @description Output values of the workflow invocation.
              */
-            output_values: Record<string, never>;
+            output_values: {
+                [key: string]: unknown;
+            };
             /**
              * Outputs
              * @description Output datasets of the workflow invocation.
@@ -18279,7 +18582,9 @@ export interface components {
              * Inputs
              * @description Values for inputs
              */
-            inputs: Record<string, never>;
+            inputs: {
+                [key: string]: unknown;
+            };
             /**
              * Inputs by
              * @description How the 'inputs' field maps its inputs (datasets/collections/step parameters) to workflows steps.
@@ -18296,7 +18601,9 @@ export interface components {
              * Legacy Step Parameters
              * @description Parameters specified per-step for the workflow invocation, this is legacy and you should generally use inputs and only specify the formal parameters of a workflow instead. If these are set, the workflow was not executed in a best-practice fashion and we the resulting invocation request may not fully reflect the executed workflow state.
              */
-            parameters?: Record<string, never> | null;
+            parameters?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Legacy Step Parameters Normalized
              * @description Indicates if legacy parameters are already normalized to be indexed by the order_index and are specified as a dictionary per step. Legacy-style parameters could previously be specified as one parameter per step or by tool ID.
@@ -18323,12 +18630,16 @@ export interface components {
              * Replacement Parameters
              * @description Class of parameters mostly used for string replacement in PJAs. In best practice workflows, these should be replaced with input parameters
              */
-            replacement_params?: Record<string, never> | null;
+            replacement_params?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Resource Parameters
              * @description If a workflow_resource_params_file file is defined and the target workflow is configured to consumer resource parameters, they can be specified with this parameter. See https://github.com/galaxyproject/galaxy/pull/4830 for more information.
              */
-            resource_params?: Record<string, never> | null;
+            resource_params?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Use cached job
              * @description Indicated whether to use a cached job for workflow invocation.
@@ -18419,7 +18730,9 @@ export interface components {
         /** WorkflowLandingRequest */
         WorkflowLandingRequest: {
             /** Request State */
-            request_state: Record<string, never>;
+            request_state: {
+                [key: string]: unknown;
+            };
             state: components["schemas"]["LandingRequestState"];
             /**
              * UUID
@@ -18761,7 +19074,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Request Error */
@@ -18938,7 +19253,9 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: Record<string, never>;
+                        [key: string]: {
+                            [key: string]: unknown;
+                        };
                     }[];
                 };
             };
@@ -19092,6 +19409,165 @@ export interface operations {
             };
         };
     };
+    show_api_dataset_collections__hdca_id__get: {
+        parameters: {
+            query?: {
+                /** @description The type of collection instance. Either `history` (default) or `library`. */
+                instance_type?: "history" | "library";
+                /** @description The view of collection instance to return. */
+                view?: string;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the `HDCA`. */
+                hdca_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json":
+                        | components["schemas"]["HDCACustom"]
+                        | components["schemas"]["HDCADetailed"]
+                        | components["schemas"]["HDCASummary"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    dataset_collections__update_collection: {
+        parameters: {
+            query?: {
+                /** @description View to be passed to the serializer */
+                view?: string | null;
+                /** @description Comma-separated list of keys to be passed to the serializer */
+                keys?: string | null;
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the item (`HDA`/`HDCA`) */
+                hdca_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateHistoryContentsPayload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json":
+                        | components["schemas"]["HDACustom"]
+                        | components["schemas"]["HDADetailed"]
+                        | components["schemas"]["HDASummary"]
+                        | components["schemas"]["HDAInaccessible"]
+                        | components["schemas"]["HDCACustom"]
+                        | components["schemas"]["HDCADetailed"]
+                        | components["schemas"]["HDCASummary"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    attributes_api_dataset_collections__hdca_id__attributes_get: {
+        parameters: {
+            query?: {
+                /** @description The type of collection instance. Either `history` (default) or `library`. */
+                instance_type?: "history" | "library";
+            };
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the `HDCA`. */
+                hdca_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatasetCollectionAttributesResult"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     contents_dataset_collection_api_dataset_collections__hdca_id__contents__parent_id__get: {
         parameters: {
             query?: {
@@ -19145,106 +19621,7 @@ export interface operations {
             };
         };
     };
-    show_api_dataset_collections__id__get: {
-        parameters: {
-            query?: {
-                /** @description The type of collection instance. Either `history` (default) or `library`. */
-                instance_type?: "history" | "library";
-                /** @description The view of collection instance to return. */
-                view?: string;
-            };
-            header?: {
-                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
-                "run-as"?: string | null;
-            };
-            path: {
-                /** @description The ID of the `HDCA`. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json":
-                        | components["schemas"]["HDCACustom"]
-                        | components["schemas"]["HDCADetailed"]
-                        | components["schemas"]["HDCASummary"];
-                };
-            };
-            /** @description Request Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageExceptionModel"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageExceptionModel"];
-                };
-            };
-        };
-    };
-    attributes_api_dataset_collections__id__attributes_get: {
-        parameters: {
-            query?: {
-                /** @description The type of collection instance. Either `history` (default) or `library`. */
-                instance_type?: "history" | "library";
-            };
-            header?: {
-                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
-                "run-as"?: string | null;
-            };
-            path: {
-                /** @description The ID of the `HDCA`. */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DatasetCollectionAttributesResult"];
-                };
-            };
-            /** @description Request Error */
-            "4XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageExceptionModel"];
-                };
-            };
-            /** @description Server Error */
-            "5XX": {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MessageExceptionModel"];
-                };
-            };
-        };
-    };
-    copy_api_dataset_collections__id__copy_post: {
+    copy_api_dataset_collections__hdca_id__copy_post: {
         parameters: {
             query?: never;
             header?: {
@@ -19253,7 +19630,7 @@ export interface operations {
             };
             path: {
                 /** @description The ID of the `HDCA`. */
-                id: string;
+                hdca_id: string;
             };
             cookie?: never;
         };
@@ -19299,7 +19676,7 @@ export interface operations {
             };
             path: {
                 /** @description The ID of the `HDCA`. */
-                id: string;
+                hdca_id: string;
             };
             cookie?: never;
         };
@@ -19332,7 +19709,7 @@ export interface operations {
             };
         };
     };
-    prepare_collection_download_api_dataset_collections__id__prepare_download_post: {
+    prepare_collection_download_api_dataset_collections__hdca_id__prepare_download_post: {
         parameters: {
             query?: never;
             header?: {
@@ -19341,7 +19718,7 @@ export interface operations {
             };
             path: {
                 /** @description The ID of the `HDCA`. */
-                id: string;
+                hdca_id: string;
             };
             cookie?: never;
         };
@@ -19383,7 +19760,7 @@ export interface operations {
             };
         };
     };
-    suitable_converters_api_dataset_collections__id__suitable_converters_get: {
+    suitable_converters_api_dataset_collections__hdca_id__suitable_converters_get: {
         parameters: {
             query?: {
                 /** @description The type of collection instance. Either `history` (default) or `library`. */
@@ -19395,7 +19772,7 @@ export interface operations {
             };
             path: {
                 /** @description The ID of the `HDCA`. */
-                id: string;
+                hdca_id: string;
             };
             cookie?: never;
         };
@@ -21895,6 +22272,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The encoded database identifier of the form. */
                 id: string;
             };
             cookie?: never;
@@ -21938,6 +22316,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The encoded database identifier of the form. */
                 id: string;
             };
             cookie?: never;
@@ -22334,6 +22713,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the group. */
                 group_id: string;
             };
             cookie?: never;
@@ -22377,6 +22757,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the group. */
                 group_id: string;
             };
             cookie?: never;
@@ -22424,6 +22805,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the group. */
                 group_id: string;
             };
             cookie?: never;
@@ -22467,6 +22849,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the group. */
                 group_id: string;
             };
             cookie?: never;
@@ -22692,6 +23075,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the group. */
                 group_id: string;
             };
             cookie?: never;
@@ -24556,7 +24940,7 @@ export interface operations {
             };
             path: {
                 /** @description The ID of the `HDCA`. */
-                id: string;
+                hdca_id: string;
                 /** @description The encoded database identifier of the History. */
                 history_id: string | null;
             };
@@ -25359,7 +25743,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Request Error */
@@ -28020,6 +28406,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the job */
                 job_id: string;
             };
             cookie?: never;
@@ -28865,6 +29252,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the Library. */
                 library_id: string;
             };
             cookie?: never;
@@ -28908,6 +29296,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the Library. */
                 library_id: string;
             };
             cookie?: never;
@@ -28959,6 +29348,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the Library. */
                 library_id: string;
                 id: string;
             };
@@ -29007,7 +29397,9 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the Library. */
                 library_id: string;
+                /** @description The encoded ID of the library dataset. */
                 id: string;
             };
             cookie?: never;
@@ -29051,7 +29443,9 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the Library. */
                 library_id: string;
+                /** @description The encoded ID of the library dataset. */
                 id: string;
             };
             cookie?: never;
@@ -30507,6 +30901,54 @@ export interface operations {
             };
         };
     };
+    update_api_pages__id__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                /** @description The ID of the Page. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePagePayload"];
+            };
+        };
+        responses: {
+            /** @description The page summary information. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageSummary"];
+                };
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
     delete_api_pages__id__delete: {
         parameters: {
             query?: never;
@@ -31655,6 +32097,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the role. */
                 id: string;
             };
             cookie?: never;
@@ -31698,6 +32141,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the role. */
                 id: string;
             };
             cookie?: never;
@@ -31741,6 +32185,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the role. */
                 id: string;
             };
             cookie?: never;
@@ -31784,6 +32229,7 @@ export interface operations {
                 "run-as"?: string | null;
             };
             path: {
+                /** @description The ID of the role. */
                 id: string;
             };
             cookie?: never;
@@ -32283,6 +32729,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    get_result_api_tasks__task_id__result_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskResult"];
+                };
             };
             /** @description Request Error */
             "4XX": {
@@ -32831,6 +33317,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+        };
+    };
+    get_icon_api_tools__tool_id__icon_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The user ID that will be used to effectively make this API call. Only admins and designated users can make API calls on behalf of other users. */
+                "run-as"?: string | null;
+            };
+            path: {
+                tool_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tool icon image in PNG format */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Tool icon image has not been modified since the last request */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Tool icon file not found or not provided by the tool */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request Error */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": components["schemas"]["MessageExceptionModel"];
+                };
+            };
+            /** @description Server Error */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": components["schemas"]["MessageExceptionModel"];
                 };
             };
         };
@@ -34289,7 +34832,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Request Error */
@@ -35121,7 +35666,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>[];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
             /** @description Request Error */

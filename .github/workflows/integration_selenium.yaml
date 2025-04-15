@@ -3,9 +3,11 @@ on:
   push:
     paths-ignore:
       - 'doc/**'
+      - 'packages/**'
   pull_request:
     paths-ignore:
       - 'doc/**'
+      - 'packages/**'
   schedule:
     # Run at midnight UTC every Tuesday
     - cron: '0 0 * * 2'
@@ -31,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8']
+        python-version: ['3.9']
     services:
       postgres:
         image: postgres:13

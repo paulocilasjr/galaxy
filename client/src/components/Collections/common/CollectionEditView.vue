@@ -53,18 +53,26 @@ const collectionChangeKey = ref(0);
 const attributesData = computed(() => {
     return collectionAttributesStore.getAttributes(props.collectionId);
 });
-const attributesLoadError = computed(() =>
-    errorMessageAsString(collectionAttributesStore.hasItemLoadError(props.collectionId))
-);
+
+const attributesLoadError = computed(() => {
+    const itemLoadError = collectionAttributesStore.getItemLoadError(props.collectionId);
+    if (itemLoadError) {
+        return errorMessageAsString(itemLoadError);
+    }
+    return undefined;
+});
 
 const collection = computed(() => {
     return collectionStore.getCollectionById(props.collectionId);
 });
 const collectionLoadError = computed(() => {
     if (collection.value) {
-        return errorMessageAsString(collectionStore.hasLoadingCollectionElementsError(collection.value));
+        const collectionElementLoadError = collectionStore.getLoadingCollectionElementsError(collection.value);
+        if (collectionElementLoadError) {
+            return errorMessageAsString(collectionElementLoadError);
+        }
     }
-    return "";
+    return undefined;
 });
 watch([attributesLoadError, collectionLoadError], () => {
     if (attributesLoadError.value) {
@@ -113,8 +121,8 @@ async function clickedSave(attribute: string, newValue: any) {
 
     const dbKey = newValue.id as string;
 
-    const { error } = await GalaxyApi().POST("/api/dataset_collections/{id}/copy", {
-        params: { path: { id: props.collectionId } },
+    const { error } = await GalaxyApi().POST("/api/dataset_collections/{hdca_id}/copy", {
+        params: { path: { hdca_id: props.collectionId } },
         body: { dbkey: dbKey },
     });
     if (error) {

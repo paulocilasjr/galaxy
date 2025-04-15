@@ -1,6 +1,8 @@
 import { type MaybeRefOrGetter, toValue } from "@vueuse/core";
 import { computed, del, type Ref, ref, set, unref } from "vue";
 
+import { LastQueue } from "@/utils/lastQueue";
+
 /**
  * Parameters for fetching an item from the server.
  *
@@ -45,6 +47,10 @@ export function useKeyedCache<T>(
     const loadingItem = ref<{ [key: string]: boolean }>({});
     const loadingErrors = ref<{ [key: string]: Error }>({});
 
+    const loadingRequests = new Map<string, Promise<T | undefined>>();
+
+    const fetchQueue = new LastQueue<FetchHandler<T>>();
+
     const getItemById = computed(() => {
         return (id: string) => {
             const item = storedItems.value[id];
@@ -68,30 +74,35 @@ export function useKeyedCache<T>(
         };
     });
 
-    const hasItemLoadError = computed(() => {
+    const getItemLoadError = computed(() => {
         return (id: string) => {
             return loadingErrors.value[id] ?? null;
         };
     });
 
-    async function fetchItemById(params: FetchParams) {
+    async function fetchItemById(params: FetchParams): Promise<T | undefined> {
         const itemId = params.id;
-        const isAlreadyLoading = loadingItem.value[itemId] ?? false;
-        const failedLoading = loadingErrors.value[itemId];
-        if (isAlreadyLoading || failedLoading) {
-            return;
+
+        if (loadingRequests.has(itemId)) {
+            return loadingRequests.get(itemId);
         }
-        set(loadingItem.value, itemId, true);
-        try {
-            const fetchItem = unref(fetchItemHandler);
-            const item = await fetchItem({ id: itemId });
-            set(storedItems.value, itemId, item);
-            return item;
-        } catch (error) {
-            set(loadingErrors.value, itemId, error);
-        } finally {
-            del(loadingItem.value, itemId);
-        }
+
+        const fetchPromise = (async () => {
+            set(loadingItem.value, itemId, true);
+            try {
+                const fetchItem = unref(fetchItemHandler);
+                const item = await fetchQueue.enqueue(fetchItem, { id: itemId }, itemId);
+                set(storedItems.value, itemId, item);
+                return item;
+            } catch (error) {
+                set(loadingErrors.value, itemId, error as Error);
+            } finally {
+                del(loadingItem.value, itemId);
+            }
+        })();
+
+        loadingRequests.set(itemId, fetchPromise);
+        return fetchPromise;
     }
 
     return {
@@ -106,11 +117,11 @@ export function useKeyedCache<T>(
          */
         getItemById,
         /**
-         * A computed function that returns true if the item with the given id is currently being fetched.
-         */
-        hasItemLoadError,
-        /**
          * A computed function holding errors
+         */
+        getItemLoadError,
+        /**
+         * A computed function that returns true if the item with the given id is currently being fetched.
          */
         isLoadingItem,
         /**
