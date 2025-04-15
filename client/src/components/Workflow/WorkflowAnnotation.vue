@@ -3,14 +3,13 @@ import { faClock } from "@fortawesome/free-regular-svg-icons";
 import { faExclamation, faHdd } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BBadge } from "bootstrap-vue";
-import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, ref } from "vue";
 
-import { isRegisteredUser } from "@/api";
+import { useMarkdown } from "@/composables/markdown";
 import { useWorkflowInstance } from "@/composables/useWorkflowInstance";
 import { useHistoryStore } from "@/stores/historyStore";
-import { useUserStore } from "@/stores/userStore";
 
+import Heading from "../Common/Heading.vue";
 import TextSummary from "../Common/TextSummary.vue";
 import SwitchToHistoryLink from "../History/SwitchToHistoryLink.vue";
 import StatelessTags from "../TagsMultiselect/StatelessTags.vue";
@@ -30,16 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
     invocationUpdateTime: undefined,
 });
 
-const { workflow } = useWorkflowInstance(props.workflowId);
-
-const { currentUser } = storeToRefs(useUserStore());
-const owned = computed(() => {
-    if (isRegisteredUser(currentUser.value) && workflow.value) {
-        return currentUser.value.username === workflow.value.owner;
-    } else {
-        return false;
-    }
-});
+const { workflow, owned } = useWorkflowInstance(props.workflowId);
 
 const description = computed(() => {
     if (workflow.value?.annotation) {
@@ -55,6 +45,14 @@ const timeElapsed = computed(() => {
 
 const workflowTags = computed(() => {
     return workflow.value?.tags || [];
+});
+
+const readmeShown = ref(false);
+
+const { renderMarkdown } = useMarkdown({
+    openLinksInNewPage: true,
+    removeNewlinesAfterList: true,
+    increaseHeadingLevelBy: 1,
 });
 </script>
 
@@ -85,7 +83,7 @@ const workflowTags = computed(() => {
             </div>
             <slot name="middle-content" />
             <div class="d-flex align-items-center">
-                <div class="d-flex flex-column align-items-end mr-2">
+                <div class="d-flex flex-column align-items-end mr-2 flex-gapy-1">
                     <WorkflowIndicators :workflow="workflow" published-view no-edit-time />
                     <WorkflowInvocationsCount v-if="owned" class="mr-1" :workflow="workflow" />
                 </div>
@@ -94,7 +92,20 @@ const workflowTags = computed(() => {
         <div v-if="props.showDetails">
             <TextSummary v-if="description" class="my-1" :description="description" one-line-summary component="span" />
             <StatelessTags v-if="workflowTags.length" :value="workflowTags" :disabled="true" />
-            <hr class="mb-0 mt-2" />
+            <div v-if="workflow.readme" class="mt-2">
+                <Heading
+                    h2
+                    separator
+                    bold
+                    size="sm"
+                    :collapse="readmeShown ? 'open' : 'closed'"
+                    @click="readmeShown = !readmeShown">
+                    <span v-localize>Readme</span>
+                </Heading>
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <p v-if="readmeShown" v-html="renderMarkdown(workflow.readme)" />
+            </div>
+            <hr v-if="!workflow.readme" class="mb-0 mt-2" />
         </div>
     </div>
 </template>

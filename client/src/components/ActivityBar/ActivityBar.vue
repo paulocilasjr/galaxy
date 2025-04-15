@@ -9,7 +9,8 @@ import draggable from "vuedraggable";
 
 import { useConfig } from "@/composables/config";
 import { convertDropData } from "@/stores/activitySetup";
-import { type Activity, useActivityStore } from "@/stores/activityStore";
+import { useActivityStore } from "@/stores/activityStore";
+import type { Activity } from "@/stores/activityStoreTypes";
 import { useEventStore } from "@/stores/eventStore";
 import { useUserStore } from "@/stores/userStore";
 
@@ -89,7 +90,7 @@ const emit = defineEmits<{
 }>();
 
 // activities from store
-const { activities } = storeToRefs(activityStore);
+const { activities, isSideBarOpen } = storeToRefs(activityStore);
 
 // drag references
 const dragTarget: Ref<EventTarget | null> = ref(null);
@@ -100,7 +101,6 @@ const isDragging = ref(false);
 
 // computed values
 const canDrag = computed(() => isActiveSideBar("settings"));
-const isSideBarOpen = computed(() => activityStore.toggledSideBar !== "");
 
 /**
  * Checks if the route of an activity is currently being visited and panels are collapsed

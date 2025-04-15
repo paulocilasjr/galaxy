@@ -16,11 +16,13 @@ from galaxy.exceptions import ConfigurationError
 from galaxy.managers.chat import ChatManager
 from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.jobs import JobManager
+from galaxy.model import User
 from galaxy.schema.fields import DecodedDatabaseIdField
 from galaxy.schema.schema import ChatPayload
 from galaxy.webapps.galaxy.api import (
     depends,
     DependsOnTrans,
+    DependsOnUser,
     Router,
 )
 
@@ -57,6 +59,7 @@ class ChatAPI:
         job_id: JobIdPathParam,
         payload: ChatPayload,
         trans: ProvidesUserContext = DependsOnTrans,
+        user: User = DependsOnUser,
     ) -> str:
         """We're off to ask the wizard"""
         # Currently job-based chat exchanges are the only ones supported,
@@ -87,6 +90,7 @@ class ChatAPI:
         job_id: JobIdPathParam,
         feedback: int,
         trans: ProvidesUserContext = DependsOnTrans,
+        user: User = DependsOnUser,
     ) -> Union[int, None]:
         """Provide feedback on the chatbot response."""
         job = self.job_manager.get_accessible_job(trans, job_id)
@@ -111,20 +115,7 @@ class ChatAPI:
             {"role": "system", "content": self._get_system_prompt()},
             {"role": "user", "content": payload.query},
         ]
-
-        user_msg = self._get_user_context_message(trans)
-        if user_msg:
-            messages.append({"role": "system", "content": user_msg})
-
         return messages
-
-    def _get_user_context_message(self, trans: ProvidesUserContext) -> str:
-        """Generate a user context message based on the user's information."""
-        user = trans.user
-        if user:
-            log.debug(f"CHATGPTuser: {user.username}")
-            return f"You will address the user as {user.username}"
-        return "You will address the user as Anonymous User"
 
     def _call_openai(self, messages: list):
         """Send a chat request to OpenAI and handle exceptions."""

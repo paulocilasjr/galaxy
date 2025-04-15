@@ -5,11 +5,13 @@ on:
       - 'client/**'
       - 'doc/**'
       - 'lib/galaxy_test/selenium/**'
+      - 'packages/**'
   pull_request:
     paths-ignore:
       - 'client/**'
       - 'doc/**'
       - 'lib/galaxy_test/selenium/**'
+      - 'packages/**'
 env:
   GALAXY_TEST_DBURI: 'postgresql://postgres:postgres@localhost:5432/galaxy?client_encoding=utf8'
 concurrency:
@@ -24,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.8']
+        python-version: ['3.9']
         marker: ['green', 'red and required', 'red and not required']
         conformance-version: ['cwl_conformance_v1_0'] #, 'cwl_conformance_v1_1', 'cwl_conformance_v1_2']
     services:
