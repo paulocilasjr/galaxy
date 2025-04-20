@@ -14,7 +14,7 @@
             <b-alert v-if="errorMessage" show variant="danger">
                 {{ errorMessage }}
             </b-alert>
-            <b-alert show variant="warning">
+            <b-alert v-if="submissionRequestFailed" show variant="warning">
                 The server could not complete this request. Please verify your parameter settings, retry submission and
                 contact the Galaxy Team if this error persists. A transcript of the submitted data is shown below.
             </b-alert>
@@ -53,9 +53,7 @@
                         @onValidation="onValidation" />
                 </div>
 
-                <div
-                    v-if="emailAllowed(config, currentUser) || remapAllowed || reuseAllowed(currentUser)"
-                    class="mt-2 mb-4">
+                <div class="mt-2 mb-4">
                     <Heading h2 separator bold size="sm"> Additional Options </Heading>
                     <FormElement
                         v-if="emailAllowed(config, currentUser)"
@@ -72,7 +70,6 @@
                         :help="remapHelp"
                         type="boolean" />
                     <FormElement
-                        v-if="reuseAllowed(currentUser)"
                         id="use_cached_job"
                         v-model="useCachedJobs"
                         title="Attempt to re-use jobs with identical parameters?"
@@ -120,17 +117,16 @@ import ToolEntryPoints from "components/ToolEntryPoints/ToolEntryPoints";
 import { mapActions, mapState, storeToRefs } from "pinia";
 import { useHistoryItemsStore } from "stores/historyItemsStore";
 import { useJobStore } from "stores/jobStore";
-import { refreshContentsWrapper } from "utils/data";
 
 import { canMutateHistory } from "@/api";
 import { useConfigStore } from "@/stores/configurationStore";
 import { useHistoryStore } from "@/stores/historyStore";
 import { useUserStore } from "@/stores/userStore";
+import { startWatchingHistory } from "@/watch/watchHistoryProvided";
 
 import ToolRecommendation from "../ToolRecommendation";
 import { getToolFormData, submitJob, updateToolFormData } from "./services";
 import ToolCard from "./ToolCard";
-import { allowCachedJobs } from "./utilities";
 
 import FormSelect from "@/components/Form/Elements/FormSelect.vue";
 
@@ -194,6 +190,7 @@ export default {
             entryPoints: [],
             jobDef: {},
             jobResponse: {},
+            submissionRequestFailed: false,
             validationInternal: null,
             validationScrollTo: null,
             currentVersion: this.version,
@@ -268,9 +265,6 @@ export default {
         emailAllowed(config, user) {
             return config.server_mail_configured && !user.isAnonymous;
         },
-        reuseAllowed(user) {
-            return allowCachedJobs(user.preferences);
-        },
         onHistoryChange() {
             const Galaxy = getGalaxyInstance();
             if (this.initialized && Galaxy && Galaxy.currHistoryPanel) {
@@ -308,6 +302,7 @@ export default {
             console.debug("ToolForm - Requesting tool.", this.id);
             return getToolFormData(this.id, this.currentVersion, this.job_id, this.history_id)
                 .then((data) => {
+                    this.currentVersion = data.version;
                     this.formConfig = data;
                     this.remapAllowed = this.job_id && data.job_remap;
                     this.showForm = true;
@@ -364,15 +359,16 @@ export default {
             const prevRoute = this.$route.fullPath;
             submitJob(jobDef).then(
                 (jobResponse) => {
+                    this.submissionRequestFailed = false;
                     this.showExecuting = false;
                     let changeRoute = false;
-                    refreshContentsWrapper();
+                    startWatchingHistory();
                     if (jobResponse.produces_entry_points) {
                         this.showEntryPoints = true;
                         this.entryPoints = jobResponse.jobs;
                     }
                     const nJobs = jobResponse && jobResponse.jobs ? jobResponse.jobs.length : 0;
-                    if (nJobs > 0) {
+                    if (nJobs > 0 && !jobResponse.errors?.length) {
                         this.showForm = false;
                         const toolName = this.toolName;
                         this.saveLatestResponse({
@@ -382,10 +378,23 @@ export default {
                         });
                         changeRoute = prevRoute === this.$route.fullPath;
                     } else {
+                        const defaultErrorTitle = "Job submission rejected.";
                         this.showError = true;
                         this.showForm = true;
-                        this.errorTitle = "Job submission rejected.";
-                        this.errorContent = jobResponse;
+                        if (jobResponse?.errors) {
+                            const nErrors = jobResponse.errors.length;
+                            if (nJobs > 0) {
+                                this.errorTitle = `Job submission for ${nErrors} out of ${
+                                    nJobs + nErrors
+                                } jobs failed.`;
+                            } else {
+                                this.errorTitle = defaultErrorTitle;
+                            }
+                            this.errorContent = jobResponse.errors;
+                        } else {
+                            this.errorTitle = defaultErrorTitle;
+                            this.errorContent = jobResponse;
+                        }
                     }
                     if (changeRoute) {
                         this.$router.push(`/jobs/submission/success`);
@@ -398,6 +407,7 @@ export default {
                 },
                 (e) => {
                     this.errorMessage = e?.response?.data?.err_msg;
+                    this.submissionRequestFailed = true;
                     this.showExecuting = false;
                     let genericError = true;
                     const errorData = e && e.response && e.response.data && e.response.data.err_data;

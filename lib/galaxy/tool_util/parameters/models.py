@@ -145,10 +145,16 @@ class ParamModel(Protocol):
         ...
 
 
+def safe_field_name(name: str) -> str:
+    if name.startswith("_"):
+        return f"X{name}"
+    return name
+
+
 def dynamic_model_information_from_py_type(
     param_model: ParamModel, py_type: Type, requires_value: Optional[bool] = None, validators=None
 ):
-    name = param_model.name
+    name = safe_field_name(param_model.name)
     if requires_value is None:
         requires_value = param_model.request_requires_value
     initialize = ... if requires_value else None
@@ -159,7 +165,7 @@ def dynamic_model_information_from_py_type(
 
     return DynamicModelInformation(
         name,
-        (py_type, initialize),
+        (py_type, Field(initialize, alias=param_model.name if param_model.name != name else None)),
         validators,
     )
 
@@ -387,7 +393,7 @@ MultiDataInstance: Type = cast(
         union_type([DataRequestHda, DataRequestLdda, DataRequestHdca, DataRequestUri]), Field(discriminator="src")
     ],
 )
-MultiDataRequest: Type = cast(Type, union_type([MultiDataInstance, list_type(MultiDataInstance)]))
+MultiDataRequest: Type = union_type([MultiDataInstance, list_type(MultiDataInstance)])
 
 
 class DataRequestInternalHda(StrictModel):
@@ -1056,14 +1062,13 @@ DiscriminatorType = Union[bool, str]
 
 
 def cond_test_parameter_default_value(
-    test_parameter: Union["BooleanParameterModel", "SelectParameterModel"]
+    test_parameter: Union["BooleanParameterModel", "SelectParameterModel"],
 ) -> Optional[DiscriminatorType]:
     default_value: Optional[DiscriminatorType] = None
     if isinstance(test_parameter, BooleanParameterModel):
         default_value = test_parameter.value
     elif isinstance(test_parameter, SelectParameterModel):
-        select_parameter = cast(SelectParameterModel, test_parameter)
-        select_default_value = select_parameter.default_value
+        select_default_value = test_parameter.default_value
         if select_default_value is not None:
             default_value = select_default_value
     return default_value
@@ -1520,8 +1525,8 @@ def create_field_model(
 
     for input_model in tool_parameter_models:
         input_model = to_simple_model(input_model)
-        input_name = input_model.name
         pydantic_request_template = input_model.pydantic_template(state_representation)
+        input_name = pydantic_request_template.name
         kwd[input_name] = pydantic_request_template.definition
         input_validators = pydantic_request_template.validators
         for validator_name, validator_callable in input_validators.items():

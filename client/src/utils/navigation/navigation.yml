@@ -57,7 +57,7 @@ masthead:
     username:
       type: xpath
       selector: '//a[contains(text(), "Signed in as")]'
-    window_manager: '#enable-window-manager'
+    window_manager: '#enable-window-manager > .nav-link'
     workflow: '#workflow .nav-link'
 
 preferences:
@@ -91,24 +91,24 @@ preferences:
 object_store_instances:
   index:
     selectors:
-      create_button: '#object-store-create'
+      create_button: '#create-button-storage-locations'
       _: '#user-object-stores-index'
 
   create:
     selectors:
-      select: '.object-store-template-select-button[data-template-id="${template_id}"]'
+      select: '#g-card-action-select-${template_id}'
       _: '#create-object-store-landing'
       submit: '#submit'
 
 file_source_instances:
   index:
     selectors:
-      create_button: '#file-source-create'
+      create_button: '#create-button-remote-file-sources'
       _: '#user-file-sources-index'
 
   create:
     selectors:
-      select: '.file-source-template-select-button[data-template-id="${template_id}"]'
+      select: '#g-card-action-select-${template_id}'
       _: '#create-file-source-landing'
       submit: '#submit'
 
@@ -184,16 +184,15 @@ history_panel:
       toolhelp_title: '${_} .toolhelp strong'
       state_icon: '${_} .state-icon'
 
-      # Title buttons...
-      display_button: '${_} .display-btn'
-      edit_button: '${_} .edit-btn'
+      # Actions
+      alltags: '${_} .stateless-tags .tag'
       delete_button: '${_} .delete-btn'
-
-      # Action buttons...
+      display_button: '${_} .display-btn'
       download_button: '${_} .download-btn'
+      edit_button: '${_} .edit-btn'
       info_button: '${_} .params-btn'
       rerun_button: '${_} .rerun-btn'
-      alltags: '${_} .stateless-tags .tag'
+      visualize_button: '${_} .visualize-btn'
 
   # history content item
   content_item:
@@ -251,6 +250,7 @@ history_panel:
       input: '${_} input'
       tag_area: '${_} .interactive-tags'
       tag_close_btn: '${_} .tag-delete-button'
+      show_more_button: '${_} .show-more-tags'
 
   multi_operations:
     selectors:
@@ -287,6 +287,8 @@ history_panel:
     name_edit_input:
       selector: 'name input'
       type: data-description
+    history_name_edit_label: '[data-description="name display"]'
+    history_name_edit_input: '[data-description="name display"] #click-to-edit-input'
     contents: '.history-index .content-item'
     empty_message: '#empty-history-message'
     size: '.history-size'
@@ -379,15 +381,18 @@ edit_collection_attributes:
 
 tool_panel:
   selectors:
+    edam_title: '[title="Apply analytical methods to existing data of a specific type."]'
     tool_box: '[data-description="panel toolbox"]'
     tool_link: 'a[href$$="tool_runner?tool_id=${tool_id}"]'
     outer_tool_link: '.toolTitle a[href$$="tool_runner?tool_id=${tool_id}"]'
     data_source_tool_link: 'a[href$$="tool_runner/data_source_redirect?tool_id=${tool_id}"]'
     search: '.search-query'
+    toolbox: '[data-description="panel toolbox"]'
     workflow_names: '#internal-workflows .toolTitle'
     views_button: '.tool-panel-dropdown'
     views_menu_item: '[data-panel-id="${panel_id}"]'
     panel_labels: '.tool-panel-label'
+
 
 multi_history_panel:
   selectors:
@@ -523,12 +528,12 @@ history_import:
 
 pages:
   selectors:
-    activity: "#activity-pages"
+    activity: '#activity-pages'
     create: '#page-create'
-    submit: '#submit'
-    create_title_input: '#form-element-title input'
-    create_slug_input: '#form-element-slug input'
     export: '.markdown-pdf-export'
+    slug_input: '#page-slug'
+    submit: '#page-submit'
+    title_input: '#page-title'
 
   editor:
     selectors:
@@ -587,6 +592,7 @@ tool_form:
     drilldown_select_all: 'div.ui-form-element[id="form-element-${parameter}"] div.select-all-checkbox'
     drilldown_option: '.drilldown-option'
     drilldown_expand: '.fa-caret-down'
+    tool_version_button: ".tool-versions"
 
   labels:
     generate_tour: 'Generate Tour'
@@ -604,28 +610,30 @@ workflows:
     advanced_search_toggle: '.workflows-list [data-description="toggle advanced search"]'
     advanced_search_name_input: '#workflows-advanced-filter-name'
     advanced_search_tag_input: '#workflows-advanced-filter-tag .stateless-tags'
-    workflow_rows: "#workflow-table > tbody > tr:not(.b-table-empty-row, [style*='display: none'])"
     workflows_list: '#workflows-list'
     workflows_list_empty: '#workflow-list-empty'
     workflow_not_found_message: '#no-workflow-found'
-    workflow_card: '.workflow-card'
-    workflow_card_button: '.workflow-card[data-workflow-name="${name}"] button[title="${title}"]'
+    workflow_card: '.g-card.workflow-card'
+    workflow_card_title: '[id^="g-card-title-"] a'
+    workflow_card_button: '[id^="g-card-action-"] button[title="${title}"]'
+    workflow_copy_steps: '[id^="g-card-action-workflow-copy-steps-"]'
+    workflow_insert_sub_workflow: '[id^="g-card-action-workflow-insert-sub-workflow-"]'
     workflow_cards: '#workflow-cards'
-    external_link: '.workflow-external-link'
-    trs_icon: '.workflow-trs-icon'
-    dropdown: '[data-workflow-actions-dropdown="${id}"]'
-    share_button: '#workflow-share-button'
-    download_button: '#workflow-download-button'
-    run_button: '[data-workflow-run]'
-    edit_button: '.workflow-edit-button'
+    external_link: '[id^="g-card-indicator-workflow-source-url-"]'
+    trs_icon: '[id^="g-card-indicator-workflow-source-trs-"]'
+    dropdown: '[id="g-card-extra-actions-${id}"]'
+    share_button: '[id^="g-card-action-workflow-share-"]'
+    download_button: '[id^="g-card-action-workflow-download-"]'
+    run_button: '[id^="g-card-action-workflow-run-"]'
+    edit_button: '[id^="g-card-action-workflow-edit-"]'
     rename_input: '#workflow-name-input'
-    workflow_drop_down: '[data-workflow-actions-dropdown]'
-    delete_button: '.workflow-delete-button'
-    view_button: '.workflow-name-preview'
+    workflow_drop_down: '[id^="g-card-extra-actions-"]'
+    delete_button: '[id^="g-card-action-workflow-delete-"]'
+    view_button: '[id^="g-card-title-link-"]'
     workflow_preview_container: '.workflow-card-preview-modal .workflow-published .published-workflow'
     workflow_preview_information: '.workflow-information'
-    view_external_link: ".workflow-view-external-link-button"
-    bookmark_link: '.workflow-bookmark-button-${action}'
+    view_external_link: "[id^='g-card-action-workflow-view-external-link-']"
+    bookmark_link: '[id^="g-card-bookmark-${action}-"]'
     import_file: '.workflow-import-file'
     import_trs_search: '.workflow-import-trs-search'
     import_trs_id: '.workflow-import-trs-id'
@@ -861,7 +869,7 @@ invocations:
     invocations_table: '#invocations-grid .grid-table'
     invocations_table_rows: '#invocations-grid .grid-table [data-description="grid item"]'
     invocations_panel_list: '[data-description="Workflow Invocations"] .scroll-list'
-    invocations_panel_list_items: '[data-description="Workflow Invocations"] .scroll-list button.panel-item'
+    invocations_panel_list_items: '[data-description="Workflow Invocations"] .scroll-list .g-card[id^="g-card-invocation-"]'
     pager: '[data-description="grid pager"]'
     pager_page: '[data-description="grid pager"] .gx-grid-pager-page [aria-posinset=${page}]'
     pager_page_next: '[data-description="grid pager"] .gx-grid-pager-next button'

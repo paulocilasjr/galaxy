@@ -37,6 +37,12 @@ if TYPE_CHECKING:
         ResourceRequirement,
         ToolRequirements,
     )
+    from galaxy.tool_util.parser.output_actions import ToolOutputActionApp
+    from galaxy.tool_util.parser.output_objects import (
+        ToolOutputBase,
+        ToolOutputCollection,
+    )
+
 
 NOT_IMPLEMENTED_MESSAGE = "Galaxy tool format does not yet support this tool feature."
 
@@ -185,6 +191,10 @@ class ToolSource(metaclass=ABCMeta):
         We parse this out as "" if it isn't explicitly declared.
         """
 
+    @abstractmethod
+    def parse_icon(self) -> Optional[str]:
+        """Return icon path for tool."""
+
     def parse_edam_operations(self) -> List[str]:
         """Parse list of edam operation codes."""
         return []
@@ -331,7 +341,9 @@ class ToolSource(metaclass=ABCMeta):
         return "galaxy.json"
 
     @abstractmethod
-    def parse_outputs(self, tool):
+    def parse_outputs(
+        self, app: Optional["ToolOutputActionApp"]
+    ) -> Tuple[Dict[str, "ToolOutputBase"], Dict[str, "ToolOutputCollection"]]:
         """Return a pair of output and output collections ordered
         dictionaries for use by Tool.
         """
@@ -758,7 +770,7 @@ class TestCollectionDef:
 
     @staticmethod
     def from_dict(
-        as_dict: Union[AnyTestCollectionDefDict, JsonTestCollectionDefCollectionElementDict]
+        as_dict: Union[AnyTestCollectionDefDict, JsonTestCollectionDefCollectionElementDict],
     ) -> "TestCollectionDef":
         if "model_class" in as_dict:
             xml_as_dict = cast(XmlTestCollectionDefDict, as_dict)

@@ -91,6 +91,7 @@ from galaxy.tools.parameters.grouping import (
     Repeat,
 )
 from galaxy.tools.parameters.history_query import HistoryQuery
+from galaxy.tools.parameters.options import ParameterOption
 from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import (
     ConnectedValue,
@@ -131,6 +132,12 @@ RUNTIME_POST_JOB_ACTIONS_KEY = "__POST_JOB_ACTIONS__"
 POSSIBLE_PARAMETER_TYPES: Tuple[INPUT_PARAMETER_TYPES] = get_args(INPUT_PARAMETER_TYPES)
 
 
+class OptionDict(TypedDict):
+    label: str
+    value: str
+    selected: bool
+
+
 class ConditionalStepWhen(BooleanToolParameter):
     pass
 
@@ -163,6 +170,7 @@ def to_cwl(value, hda_references, step):
             properties = {
                 "class": "File",
                 "location": f"step_input://{len(hda_references)}",
+                "format": value.extension,
             }
             set_basename_and_derived_properties(
                 properties, value.dataset.created_from_basename or element_identifier or value.name
@@ -322,9 +330,14 @@ class WorkflowModule:
         the step.
         """
         if inputs := self.get_inputs():
-            return self.state.encode(Bunch(inputs=inputs), self.trans.app, nested=nested)
-        else:
-            return self.state.inputs
+            try:
+                return self.state.encode(Bunch(inputs=inputs), self.trans.app, nested=nested)
+            except ValueError:
+                log.warning("Tool state invalid for workflow module", exc_info=True)
+                # Always preferable to save unmodified and continue, I think ... we're explicit about alterations when retrieving any workflow,
+                # and it is what we do if we don't have the tool installed (assuming this is a tool).
+                pass
+        return self.state.inputs
 
     def get_export_state(self):
         return self.get_state(nested=True)
@@ -1054,15 +1067,15 @@ class InputDataModule(InputModule):
         return [dict(name="output", extensions=extensions, optional=optional)]
 
     def get_filter_set(self, connections=None):
-        filter_set = []
+        filter_set = set()  # Use a set to ensure unique extensions
         if connections:
             for oc in connections:
                 for ic in oc.input_step.module.get_data_inputs():
                     if "extensions" in ic and ic["extensions"] != "input" and ic["name"] == oc.input_name:
-                        filter_set += ic["extensions"]
+                        filter_set.update(ic["extensions"])
         if not filter_set:
-            filter_set = ["data"]
-        return ", ".join(filter_set)
+            filter_set = {"data"}
+        return ", ".join(sorted(filter_set))
 
     def get_runtime_inputs(self, step, connections: Optional[Iterable[WorkflowStepConnection]] = None):
         parameter_def = self._parse_state_into_dict()
@@ -1446,7 +1459,7 @@ class InputParameterModule(WorkflowModule):
 
     def restrict_options(self, step, connections: Iterable[WorkflowStepConnection], default_value):
         try:
-            static_options = []
+            static_options: List[List[ParameterOption]] = []
             # Retrieve possible runtime options for 'select' type inputs
             for connection in connections:
                 # Well this isn't a great assumption...
@@ -1472,7 +1485,7 @@ class InputParameterModule(WorkflowModule):
                                 ].static_options
                             )
 
-            options = None
+            options: Optional[List[OptionDict]] = None
             if static_options and len(static_options) == 1:
                 # If we are connected to a single option, just use it as is so order is preserved cleanly and such.
                 options = [
@@ -1481,19 +1494,20 @@ class InputParameterModule(WorkflowModule):
                 ]
             elif static_options:
                 # Intersection based on values of multiple option connections.
-                intxn_vals = set.intersection(*({option[1] for option in options} for options in static_options))
-                intxn_opts = {option for options in static_options for option in options if option[1] in intxn_vals}
-                d = defaultdict(set)  # Collapse labels with same values
-                for label, value, _ in intxn_opts:
-                    d[value].add(label)
+                intxn_vals = set.intersection(*({option.value for option in options} for options in static_options))
+                intxn_opts = {option for options in static_options for option in options if option.value in intxn_vals}
+                collapsed_labels = defaultdict(set)  # Collapse labels with same values
+                for option in intxn_opts:
+                    collapsed_labels[option.value].add(option.name)
                 options = [
                     {
-                        "label": ", ".join(label),
+                        "label": ", ".join(labels),
                         "value": value,
                         "selected": bool(default_value and value == default_value),
                     }
-                    for value, label in d.items()
+                    for value, labels in collapsed_labels.items()
                 ]
+                options.sort(key=lambda x: x["label"])
 
             return options
         except Exception:
@@ -2394,9 +2408,15 @@ class ToolModule(WorkflowModule):
             param_combinations.append(execution_state.inputs)
 
         complete = False
-        completed_jobs: Dict[int, Optional[Job]] = tool.completed_jobs(trans, use_cached_job, param_combinations)
+        completed_jobs: Dict[int, Optional[Job]] = tool.completed_jobs(
+            trans,
+            use_cached_job,
+            param_combinations,
+        )
         try:
             mapping_params = MappingParameters(tool_state.inputs, param_combinations)
+            if use_cached_job:
+                mapping_params.param_template["__use_cached_job__"] = use_cached_job
             max_num_jobs = progress.maximum_jobs_to_schedule_or_none
 
             validate_outputs = False
@@ -2613,7 +2633,7 @@ class WorkflowModuleInjector:
         self.trans = trans
         self.allow_tool_state_corrections = allow_tool_state_corrections
 
-    def inject(self, step: WorkflowStep, step_args=None, steps=None, **kwargs):
+    def inject(self, step: WorkflowStep, step_args=None, steps=None, allow_tool_state_corrections=False, **kwargs):
         """Pre-condition: `step` is an ORM object coming from the database, if
         supplied `step_args` is the representation of the inputs for that step
         supplied via web form.
@@ -2646,7 +2666,12 @@ class WorkflowModuleInjector:
 
             subworkflow = step.subworkflow
             assert subworkflow
-            populate_module_and_state(self.trans, subworkflow, param_map=unjsonified_subworkflow_param_map)
+            populate_module_and_state(
+                self.trans,
+                subworkflow,
+                param_map=unjsonified_subworkflow_param_map,
+                allow_tool_state_corrections=allow_tool_state_corrections,
+            )
 
     def inject_all(self, workflow: Workflow, param_map=None, ignore_tool_missing_exception=False, **kwargs):
         param_map = param_map or {}

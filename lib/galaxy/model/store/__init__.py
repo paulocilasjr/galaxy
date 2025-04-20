@@ -62,10 +62,7 @@ from galaxy.files import (
     ProvidesFileSourcesUserContext,
 )
 from galaxy.files.uris import stream_url_to_file
-from galaxy.model.base import (
-    ensure_object_added_to_session,
-    transaction,
-)
+from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.mapping import GalaxyModelMapping
 from galaxy.model.metadata import MetadataCollection
 from galaxy.model.orm.util import (
@@ -113,7 +110,10 @@ from galaxy.util import (
     safe_makedirs,
 )
 from galaxy.util.bunch import Bunch
-from galaxy.util.compression_utils import CompressedFile
+from galaxy.util.compression_utils import (
+    CompressedFile,
+    make_fast_zipfile,
+)
 from galaxy.util.path import StrPath
 from ._bco_convert_utils import (
     bco_workflow_version,
@@ -236,7 +236,7 @@ class SessionlessContext:
     def add(self, obj: model.RepresentById) -> None:
         self.objects[obj.__class__][obj.id] = obj
 
-    def query(self, model_class: model.RepresentById) -> Bunch:
+    def query(self, model_class: Type[model.RepresentById]) -> Bunch:
         def find(obj_id):
             return self.objects.get(model_class, {}).get(obj_id) or None
 
@@ -246,7 +246,7 @@ class SessionlessContext:
 
         return Bunch(find=find, get=find, filter_by=filter_by)
 
-    def get(self, model_class: model.RepresentById, primary_key: Any):  # patch for SQLAlchemy 2.0 compatibility
+    def get(self, model_class: Type[model.RepresentById], primary_key: Any):  # patch for SQLAlchemy 2.0 compatibility
         return self.query(model_class).get(primary_key)
 
 
@@ -268,6 +268,7 @@ def replace_metadata_file(
 class ModelImportStore(metaclass=abc.ABCMeta):
     app: Optional[StoreAppProtocol]
     archive_dir: str
+    sa_session: Union[scoped_session, SessionlessContext]
 
     def __init__(
         self,
@@ -497,7 +498,8 @@ class ModelImportStore(metaclass=abc.ABCMeta):
 
             if "id" in dataset_attrs and self.import_options.allow_edit and not self.sessionless:
                 model_class = getattr(model, dataset_attrs["model_class"])
-                dataset_instance: model.DatasetInstance = self.sa_session.get(model_class, dataset_attrs["id"])
+                dataset_instance = self.sa_session.get(model_class, dataset_attrs["id"])
+                assert isinstance(dataset_instance, model.DatasetInstance)
                 attributes = [
                     "name",
                     "extension",
@@ -777,8 +779,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                     ld.library_dataset_dataset_association = ldda
                 self._session_add(ld)
 
-            with transaction(self.sa_session):
-                self.sa_session.commit()
+            self.sa_session.commit()
             return library_folder
 
         libraries_attrs = self.library_properties()
@@ -880,6 +881,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
                 dc = import_collection(collection_attrs["collection"])
                 if "id" in collection_attrs and self.import_options.allow_edit and not self.sessionless:
                     hdca = self.sa_session.get(model.HistoryDatasetCollectionAssociation, collection_attrs["id"])
+                    assert hdca is not None
                     # TODO: edit attributes...
                 else:
                     hdca = model.HistoryDatasetCollectionAssociation(
@@ -1330,8 +1332,7 @@ class ModelImportStore(metaclass=abc.ABCMeta):
         self.sa_session.add(obj)
 
     def _flush(self) -> None:
-        with transaction(self.sa_session):
-            self.sa_session.commit()
+        self.sa_session.commit()
 
 
 def _copied_from_object_key(
@@ -2214,7 +2215,8 @@ class DirectoryModelExportStore(ModelExportStore):
         )
         datasets = sa_session.scalars(stmt_hda).unique()
         for dataset in datasets:
-            dataset.annotation = get_item_annotation_str(sa_session, history.user, dataset)
+            # Add a new "annotation" attribute so that the user annotation for the dataset can be serialized without needing the user
+            dataset.annotation = get_item_annotation_str(sa_session, history.user, dataset)  # type: ignore[attr-defined]
             should_include_file = (dataset.visible or include_hidden) and (not dataset.deleted or include_deleted)
             if not dataset.deleted and dataset.id in self.collection_datasets:
                 should_include_file = True
@@ -2882,7 +2884,7 @@ class ROCrateArchiveModelExportStore(FileSourceModelExportStore, WriteCrates):
             out_file = out_file_name[: -len(".zip")]
         else:
             out_file = out_file_name
-        archive = shutil.make_archive(out_file, "fastzip", self.export_directory)
+        archive = make_fast_zipfile(base_name=out_file, base_dir=self.export_directory, root_dir=self.export_directory)
         shutil.move(archive, self.out_file)
 
 

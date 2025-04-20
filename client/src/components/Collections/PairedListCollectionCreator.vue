@@ -50,6 +50,7 @@ interface Props {
     historyId: string;
     initialElements: HistoryItemSummary[];
     defaultHideSourceItems?: boolean;
+    suggestedName?: string;
     fromSelection?: boolean;
     extensions?: string[];
 }
@@ -290,7 +291,7 @@ function _isElementInvalid(element: HistoryItemSummary) {
     if (element.history_content_type === "dataset_collection") {
         return localize("is a collection, this is not allowed");
     }
-    var validState = element.state === STATES.OK || STATES.NOT_READY_STATES.includes(element.state as string);
+    const validState = STATES.VALID_INPUT_STATES.includes(element.state as string);
     if (!validState) {
         return localize("has errored, is paused, or is not accessible");
     }
@@ -304,7 +305,7 @@ function _isElementInvalid(element: HistoryItemSummary) {
         element.extension &&
         !datatypesMapper.value?.isSubTypeOfAny(element.extension, props.extensions!)
     ) {
-        return localize(`has an invalid extension: ${element.extension}`);
+        return localize(`has an invalid format: ${element.extension}`);
     }
     return null;
 }
@@ -882,6 +883,7 @@ function _naiveStartingAndEndingLCS(s1: string, s2: string) {
                 collection-type="list:paired"
                 :no-items="props.initialElements.length == 0 && !props.fromSelection"
                 :show-upload="!fromSelection"
+                :suggested-name="props.suggestedName"
                 @add-uploaded-files="addUploadedFiles"
                 @onUpdateHideSourceItems="hideSourceItems = $event"
                 @clicked-create="clickedCreate"
@@ -1036,7 +1038,7 @@ function _naiveStartingAndEndingLCS(s1: string, s2: string) {
                                 )
                             }}
                             <span v-if="extensions?.length">
-                                {{ localize("The following extensions are required for this collection: ") }}
+                                {{ localize("The following format(s) are required for this collection: ") }}
                                 <ul>
                                     <li v-for="extension in extensions" :key="extension">
                                         {{ extension }}

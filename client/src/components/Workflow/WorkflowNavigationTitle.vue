@@ -6,11 +6,10 @@ import { storeToRefs } from "pinia";
 import { computed, ref } from "vue";
 import { RouterLink } from "vue-router";
 
-import { isRegisteredUser } from "@/api";
 import type { WorkflowInvocationElementView } from "@/api/invocations";
+import type { WorkflowSummary } from "@/api/workflows";
 import { useWorkflowInstance } from "@/composables/useWorkflowInstance";
 import { useUserStore } from "@/stores/userStore";
-import type { Workflow } from "@/stores/workflowStore";
 import localize from "@/utils/localization";
 import { errorMessageAsString } from "@/utils/simple-error";
 
@@ -18,6 +17,7 @@ import { copyWorkflow } from "./workflows.services";
 
 import AsyncButton from "../Common/AsyncButton.vue";
 import ButtonSpinner from "../Common/ButtonSpinner.vue";
+import LoadingSpan from "../LoadingSpan.vue";
 import WorkflowRunButton from "./WorkflowRunButton.vue";
 
 interface Props {
@@ -36,19 +36,12 @@ const emit = defineEmits<{
     (e: "on-execute"): void;
 }>();
 
-const { workflow, error } = useWorkflowInstance(props.workflowId);
+const { workflow, loading, error, owned } = useWorkflowInstance(props.workflowId);
 
-const { currentUser, isAnonymous } = storeToRefs(useUserStore());
-const owned = computed(() => {
-    if (isRegisteredUser(currentUser.value) && workflow.value) {
-        return currentUser.value.username === workflow.value.owner;
-    } else {
-        return false;
-    }
-});
+const { isAnonymous } = storeToRefs(useUserStore());
 
 const importErrorMessage = ref<string | null>(null);
-const importedWorkflow = ref<Workflow | null>(null);
+const importedWorkflow = ref<WorkflowSummary | null>(null);
 const workflowImportedAttempted = ref(false);
 
 async function onImport() {
@@ -57,7 +50,7 @@ async function onImport() {
     }
     try {
         const wf = await copyWorkflow(workflow.value.id, workflow.value.owner);
-        importedWorkflow.value = wf as unknown as Workflow;
+        importedWorkflow.value = wf;
     } catch (error) {
         importErrorMessage.value = errorMessageAsString(error, "Failed to import workflow");
     } finally {
@@ -95,7 +88,7 @@ const workflowImportTitle = computed(() => {
 
         <BAlert v-if="error" variant="danger" show>{{ error }}</BAlert>
 
-        <div class="position-relative mb-2">
+        <div class="position-relative">
             <div v-if="workflow" class="bg-secondary px-2 py-1 rounded">
                 <div class="d-flex align-items-center flex-gapx-1">
                     <div class="flex-grow-1" data-description="workflow heading">
@@ -147,7 +140,7 @@ const workflowImportTitle = computed(() => {
                         v-else
                         :id="workflow.id"
                         data-description="route to workflow run button"
-                        variant="link"
+                        variant="primary"
                         :title="
                             !workflow.deleted
                                 ? `<b>Rerun</b><br>${getWorkflowName()}`
@@ -163,6 +156,9 @@ const workflowImportTitle = computed(() => {
                 Successfully invoked workflow
                 <b>{{ getWorkflowName() }}</b>
             </div>
+            <BAlert v-else-if="loading" variant="info" show>
+                <LoadingSpan message="Loading workflow details" />
+            </BAlert>
         </div>
     </div>
 </template>
