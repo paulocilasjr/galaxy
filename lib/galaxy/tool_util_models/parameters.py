@@ -33,7 +33,6 @@ from pydantic import (
     StrictInt,
     StrictStr,
     Tag,
-    ValidationError,
 )
 from typing_extensions import (
     Annotated,
@@ -41,21 +40,6 @@ from typing_extensions import (
     Protocol,
 )
 
-from galaxy.exceptions import RequestParameterInvalidException
-from galaxy.tool_util.parser.interface import (
-    DrillDownOptionsDict,
-    JsonTestCollectionDefDict,
-    JsonTestDatasetDefDict,
-)
-from galaxy.tool_util.parser.parameter_validators import (
-    EmptyFieldParameterValidatorModel,
-    ExpressionParameterValidatorModel,
-    InRangeParameterValidatorModel,
-    LengthParameterValidatorModel,
-    NoOptionsParameterValidatorModel,
-    RegexParameterValidatorModel,
-    StaticValidatorModel,
-)
 from ._types import (
     cast_as_type,
     expand_annotation,
@@ -64,6 +48,20 @@ from ._types import (
     optional,
     optional_if_needed,
     union_type,
+)
+from .parameter_validators import (
+    EmptyFieldParameterValidatorModel,
+    ExpressionParameterValidatorModel,
+    InRangeParameterValidatorModel,
+    LengthParameterValidatorModel,
+    NoOptionsParameterValidatorModel,
+    RegexParameterValidatorModel,
+    StaticValidatorModel,
+)
+from .tool_source import (
+    DrillDownOptionsDict,
+    JsonTestCollectionDefDict,
+    JsonTestDatasetDefDict,
 )
 
 # TODO:
@@ -860,8 +858,9 @@ class GenomeBuildParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        # assumes it uses behavior of select parameters - an API test to reference for this would be nice
-        return self.multiple and not self.optional
+        # it seems to always just pick values currently - an empty multiple or optional comes through as null
+        # and empty single non-optional input comes through as "?"". See gx_genomebuild*.xml tools.
+        return False
 
 
 DrillDownHierarchyT = Literal["recurse", "exact"]
@@ -984,6 +983,7 @@ def selected_drill_down_options(options: List[DrillDownOptionsDict]) -> List[str
 class DataColumnParameterModel(BaseGalaxyToolParameterModelDefinition):
     parameter_type: Literal["gx_data_column"] = "gx_data_column"
     multiple: bool
+    value: Optional[Union[int, List[int]]] = None
 
     @staticmethod
     def split_str(cls, data: Any) -> Any:
@@ -1009,7 +1009,10 @@ class DataColumnParameterModel(BaseGalaxyToolParameterModelDefinition):
                 }
             else:
                 validators = {}
-            return dynamic_model_information_from_py_type(self, self.py_type, validators=validators)
+            requires_value = self.request_requires_value
+            return dynamic_model_information_from_py_type(
+                self, self.py_type, validators=validators, requires_value=requires_value
+            )
         else:
             requires_value = self.request_requires_value
             if state_representation == "job_internal":
@@ -1018,7 +1021,7 @@ class DataColumnParameterModel(BaseGalaxyToolParameterModelDefinition):
 
     @property
     def request_requires_value(self) -> bool:
-        return self.multiple and not self.optional
+        return self.multiple and not (self.optional or self.value)
 
 
 class GroupTagParameterModel(BaseGalaxyToolParameterModelDefinition):
@@ -1538,38 +1541,3 @@ def create_field_model(
 
 def _is_landing_request(state_representation: StateRepresentationT):
     return state_representation in ["landing_request", "landing_request_internal"]
-
-
-def validate_against_model(pydantic_model: Type[BaseModel], parameter_state: Dict[str, Any]) -> None:
-    try:
-        pydantic_model(**parameter_state)
-    except ValidationError as e:
-        # TODO: Improve this or maybe add a handler for this in the FastAPI exception
-        # handler.
-        raise RequestParameterInvalidException(str(e))
-
-
-class ValidationFunctionT(Protocol):
-
-    def __call__(self, tool: ToolParameterBundle, request: RawStateDict, name: Optional[str] = None) -> None: ...
-
-
-def validate_model_type_factory(state_representation: StateRepresentationT) -> ValidationFunctionT:
-
-    def validate_request(tool: ToolParameterBundle, request: Dict[str, Any], name: Optional[str] = None) -> None:
-        name = name or DEFAULT_MODEL_NAME
-        pydantic_model = create_field_model(tool.parameters, name=name, state_representation=state_representation)
-        validate_against_model(pydantic_model, request)
-
-    return validate_request
-
-
-validate_request = validate_model_type_factory("request")
-validate_internal_request = validate_model_type_factory("request_internal")
-validate_internal_request_dereferenced = validate_model_type_factory("request_internal_dereferenced")
-validate_landing_request = validate_model_type_factory("landing_request")
-validate_internal_landing_request = validate_model_type_factory("landing_request_internal")
-validate_internal_job = validate_model_type_factory("job_internal")
-validate_test_case = validate_model_type_factory("test_case_xml")
-validate_workflow_step = validate_model_type_factory("workflow_step")
-validate_workflow_step_linked = validate_model_type_factory("workflow_step_linked")

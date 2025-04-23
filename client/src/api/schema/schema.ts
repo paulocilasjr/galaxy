@@ -32,7 +32,7 @@ export interface paths {
         put?: never;
         /**
          * Query
-         * @description We're off to ask the wizard
+         * @description We're off to ask the wizard and return a JSON response
          */
         post: operations["query_api_chat_post"];
         delete?: never;
@@ -6662,6 +6662,24 @@ export interface components {
              */
             query: string;
         };
+        /** ChatResponse */
+        ChatResponse: {
+            /**
+             * Error Code
+             * @description The error code, if any, for the chat query.
+             */
+            error_code: number | null;
+            /**
+             * Error Message
+             * @description The error message, if any, for the chat query.
+             */
+            error_message: string | null;
+            /**
+             * Response
+             * @description The response to the chat query.
+             */
+            response: string;
+        };
         /** CheckForUpdatesResponse */
         CheckForUpdatesResponse: {
             /**
@@ -8611,11 +8629,6 @@ export interface components {
              * @description Percentage of the storage quota applicable to the user.
              */
             quota_percent?: number | null;
-            /**
-             * Tags used
-             * @description Tags used by the user
-             */
-            tags_used: string[];
             /**
              * Total disk usage
              * @description Size of all non-purged, unique datasets of the user in bytes.
@@ -18983,7 +18996,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": string;
+                    "application/json": components["schemas"]["ChatResponse"];
                 };
             };
             /** @description Request Error */

@@ -35,6 +35,7 @@ import NotificationsPreferences from "components/User/Notifications/Notification
 import UserPreferences from "components/User/UserPreferences";
 import UserPreferencesForm from "components/User/UserPreferencesForm";
 import VisualizationsList from "components/Visualizations/Index";
+import VisualizationCreate from "components/Visualizations/VisualizationCreate";
 import VisualizationFrame from "components/Visualizations/VisualizationFrame";
 import VisualizationPublished from "components/Visualizations/VisualizationPublished";
 import HistoryInvocations from "components/Workflow/HistoryInvocations";
@@ -571,6 +572,12 @@ export function getRouter(Galaxy) {
                         }),
                     },
                     {
+                        path: "visualizations/create/:visualization",
+                        component: VisualizationCreate,
+                        name: "VisualizationsCreate",
+                        props: true,
+                    },
+                    {
                         path: "visualizations/display",
                         component: VisualizationFrame,
                         name: "VisualizationsDisplay",
@@ -655,6 +662,7 @@ export function getRouter(Galaxy) {
                         props: (route) => ({
                             invocationId: route.params.invocationId,
                             isFullPage: true,
+                            success: route.query.success,
                         }),
                     },
                     {
