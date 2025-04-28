@@ -162,4 +162,7 @@
     <tool file="ludwig/ludwig_train.xml" />
     <tool file="ludwig/ludwig_visualize.xml" />
   </section>
+  <section id="tiling" name="Tiling images">
+    <tool file="tiling/tiling_pyhist.xml" />
+  </section>
 </toolbox>
