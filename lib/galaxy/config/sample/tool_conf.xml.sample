@@ -165,4 +165,10 @@
   <section id="tiling" name="Tiling images">
     <tool file="tiling/tiling_pyhist.xml" />
   </section>
+  <section id="image_learner" name="Image Learner">
+    <tool file="image_learner/image_learner.xml" />
+  </section>
+  <section id="tabular_learner" name="Tabular Learner">
+    <tool file="tabular_learner/tabular_learner.xml" />
+  </section>
 </toolbox>

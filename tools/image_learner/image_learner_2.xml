@@ -1,0 +1,154 @@
+<tool id="image_learner" name="Image Learner" version="1.0.0">
+    <description>trains and evaluates a model from images</description>
+    <requirements>
+    </requirements>
+    <command>
+        <![CDATA[
+            #import re
+            #if $raw_data
+                unzip -o -q '$raw_data' -d ./;
+            #end if
+            #if $dataset
+                #set $sanitized_dataset = re.sub('[^\w\-_\.]', '_', $dataset.element_identifier.strip())
+                ln -sf '$dataset' "./${sanitized_dataset}";
+            #end if
+            python '$__tool_directory__/image_learner.py' \
+                #if $dataset
+                --dataset "./${sanitized_dataset}" \
+                #end if
+                --data_format '$data_format' \
+                --images_dir './' \
+                --encoder_type '$encoder_type' \
+                --output_directory '.'
+        ]]>
+    </command>
+    <inputs>
+        <param argument="dataset" type="data" format="csv,tabular,xlsx,hdf5,json" optional="true" label="Input dataset" />
+        <param name="data_format" type="select" label="Input dataset format">
+            <option value="tsv">tsv</option>
+            <option value="csv" selected="true">csv</option>
+            <option value="excel">excel</option>
+            <option value="hdf5">hdf5</option>
+            <option value="json">json</option>
+        </param>
+        <param name="raw_data" type="data" format="zip" optional="true" label="Image files (zip)" help="Optional. Needed for images."/>
+        <param name="encoder_type" type="select" label="Encoder type" help="Select the type of encoder to use for image features. See Ludwig documentation for details on each encoder.">
+            <option value="stacked_cnn" selected="true">stacked_cnn</option>
+            <option value="mlp_mixer">mlp_mixer</option>
+            <option value="unet">unet</option>
+            <option value="alexnet">alexnet</option>
+            <option value="convnext_tiny">convnext_tiny</option>
+            <option value="convnext_small">convnext_small</option>
+            <option value="convnext_base">convnext_base</option>
+            <option value="convnext_large">convnext_large</option>
+            <option value="densenet121">densenet121</option>
+            <option value="densenet161">densenet161</option>
+            <option value="densenet169">densenet169</option>
+            <option value="densenet201">densenet201</option>
+            <option value="efficientnet_b0">efficientnet_b0</option>
+            <option value="efficientnet_b1">efficientnet_b1</option>
+            <option value="efficientnet_b2">efficientnet_b2</option>
+            <option value="efficientnet_b3">efficientnet_b3</option>
+            <option value="efficientnet_b4">efficientnet_b4</option>
+            <option value="efficientnet_b5">efficientnet_b5</option>
+            <option value="efficientnet_b6">efficientnet_b6</option>
+            <option value="efficientnet_b7">efficientnet_b7</option>
+            <option value="efficientnet_v2_s">efficientnet_v2_s</option>
+            <option value="efficientnet_v2_m">efficientnet_v2_m</option>
+            <option value="efficientnet_v2_l">efficientnet_v2_l</option>
+            <option value="googlenet">googlenet</option>
+            <option value="inceptionv3">inceptionv3</option>
+            <option value="maxvit_t">maxvit_t</option>
+            <option value="mnasnet0_5">mnasnet0_5</option>
+            <option value="mnasnet0_75">mnasnet0_75</option>
+            <option value="mnasnet1_0">mnasnet1_0</option>
+            <option value="mnasnet1_3">mnasnet1_3</option>
+            <option value="mobilenetv2">mobilenetv2</option>
+            <option value="mobilenetv3_small">mobilenetv3_small</option>
+            <option value="mobilenetv3_large">mobilenetv3_large</option>
+            <option value="regnet_x_1_6gf">regnet_x_1_6gf</option>
+            <option value="regnet_x_16gf">regnet_x_16gf</option>
+            <option value="regnet_x_32gf">regnet_x_32gf</option>
+            <option value="regnet_x_3_2gf">regnet_x_3_2gf</option>
+            <option value="regnet_x_400mf">regnet_x_400mf</option>
+            <option value="regnet_x_800mf">regnet_x_800mf</option>
+            <option value="regnet_x_8gf">regnet_x_8gf</option>
+            <option value="regnet_y_128gf">regnet_y_128gf</option>
+            <option value="regnet_y_16gf">regnet_y_16gf</option>
+            <option value="regnet_y_1_6gf">regnet_y_1_6gf</option>
+            <option value="regnet_y_32gf">regnet_y_32gf</option>
+            <option value="regnet_y_3_2gf">regnet_y_3_2gf</option>
+            <option value="regnet_y_400mf">regnet_y_400mf</option>
+            <option value="regnet_y_800mf">regnet_y_800mf</option>
+            <option value="regnet_y_8gf">regnet_y_8gf</option>
+            <option value="resnet18">resnet18</option>
+            <option value="resnet34">resnet34</option>
+            <option value="resnet50">resnet50</option>
+            <option value="resnet101">resnet101</option>
+            <option value="resnet152">resnet152</option>
+            <option value="resnext50_32x4d">resnext50_32x4d</option>
+            <option value="resnext101_32x8d">resnext101_32x8d</option>
+            <option value="resnext101_64x4d">resnext101_64x4d</option>
+            <option value="shufflenet_v2_x0_5">shufflenet_v2_x0_5</option>
+            <option value="shufflenet_v2_x1_0">shufflenet_v2_x1_0</option>
+            <option value="shufflenet_v2_x1_5">shufflenet_v2_x1_5</option>
+            <option value="shufflenet_v2_x2_0">shufflenet_v2_x2_0</option>
+            <option value="squeezenet1_0">squeezenet1_0</option>
+            <option value="squeezenet1_1">squeezenet1_1</option>
+            <option value="swin_t">swin_t</option>
+            <option value="swin_s">swin_s</option>
+            <option value="swin_b">swin_b</option>
+            <option value="vgg11">vgg11</option>
+            <option value="vit_b_16">vit_b_16</option>
+            <option value="vit_b_32">vit_b_32</option>
+            <option value="vit_l_16">vit_l_16</option>
+            <option value="vit_l_32">vit_l_32</option>
+            <option value="vit_h_14">vit_h_14</option>
+            <option value="wide_resnet50_2">wide_resnet50_2</option>
+            <option value="wide_resnet101_2">wide_resnet101_2</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data format="ludwig_model" name="output_model" label="${tool.name} trained model on ${on_string}" />
+        <data format="html" name="output_report" from_work_dir="ludwig_experiment_report.html" label="${tool.name} report on ${on_string}" />
+        <collection type="list" name="output_pred_csv" label="${tool.name} predictions CSVs/experiment stats on ${on_string}" >
+            <discover_datasets pattern="(?P&lt;designation&gt;predictions_parquet\.csv)" format="csv" directory="experiment_run" />
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.json" format="json" directory="experiment_run" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="dataset" value="temperature_la.csv" ftype="csv" />
+            <param name="config" value="temperature_config.yml" ftype="yaml" />
+            <param name="data_format" value="csv" />
+            <output name="output_report" file="ludwig_experiment_report_test.html" compare="sim_size" delta="20000" >
+                <assert_contents>
+                    <has_text text="Experiment" />
+                </assert_contents>
+            </output>
+
+            <output_collection name="output_pred_csv" type="list" >
+                <element name="predictions_parquet.csv" >
+                    <assert_contents>
+                        <has_n_columns n="1" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+Ludwig Experiment: train on one (portion of) dataset and evalue the model performance on another (portion of) dataset.
+
+
+**Output**
+An HTML containing the evaluation report of the trained model.
+A trained Ludwig model composite dataset.
+Predictions results (csv and jsons) from the model evaluations.
+
+
+        ]]>
+    </help>
+    <expand macro="macro_citations" />
+</tool>
