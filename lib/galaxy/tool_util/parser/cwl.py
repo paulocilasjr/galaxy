@@ -159,7 +159,7 @@ class CwlToolSource(ToolSource):
             output.format = "expression.json"
         output.change_format = []
         output.format_source = None
-        output.metadata_source = ""
+        output.metadata_source = None
         output.parent = None
         output.label = None
         output.count = None
@@ -182,6 +182,7 @@ class CwlToolSource(ToolSource):
             software_requirements=[{"name": r[0], "version": r[1], "type": "package"} for r in software_requirements],
             containers=containers,
             resource_requirements=resource_requirements,
+            javascript_requirements=[],  # TODO, implement in tool proxy?
         )
 
     def parse_profile(self):

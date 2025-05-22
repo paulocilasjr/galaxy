@@ -3,7 +3,7 @@
     <BAlert v-else-if="!currentHistoryId || isLoading" variant="info" show>
         <LoadingSpan message="Please wait" />
     </BAlert>
-    <BAlert v-else-if="options.length === 0" variant="info" show>
+    <BAlert v-else-if="options.length === 0" variant="warning" show>
         No datasets found in your current history that are compatible. Please upload a compatible dataset.
     </BAlert>
     <div
@@ -37,16 +37,19 @@ import {
     getWorkflows,
 } from "@/components/SelectionField/services";
 import { type EventData, useEventStore } from "@/stores/eventStore";
+import { useHistoryItemsStore } from "@/stores/historyItemsStore";
 import { useHistoryStore } from "@/stores/historyStore";
 
 import type { OptionType } from "./types";
 
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
+const DEFAULT_NAME = "...";
+const DELAY = 300;
+
 const eventStore = useEventStore();
 const { currentHistoryId } = storeToRefs(useHistoryStore());
-
-const DELAY = 300;
+const { lastUpdateTime } = storeToRefs(useHistoryItemsStore());
 
 const props = withDefaults(
     defineProps<{
@@ -58,7 +61,7 @@ const props = withDefaults(
     }>(),
     {
         objectId: "",
-        objectName: "...",
+        objectName: "",
         objectQuery: undefined,
         objectTitle: undefined,
     }
@@ -76,10 +79,20 @@ const isLoading = ref(true);
 const options: Ref<Array<OptionType>> = ref([]);
 
 const currentValue = computed({
-    get: () => ({
-        id: props.objectId,
-        name: props.objectName,
-    }),
+    get: () => {
+        if (!props.objectId && !props.objectName && options.value.length > 0) {
+            const firstOption = options.value[0];
+            return {
+                id: firstOption?.id || "",
+                name: firstOption?.name || DEFAULT_NAME,
+            };
+        } else {
+            return {
+                id: props.objectId,
+                name: props.objectName || DEFAULT_NAME,
+            };
+        }
+    },
     set: (newValue: OptionType) => {
         emit("change", newValue);
     },
@@ -173,8 +186,10 @@ function isValidContent(historyContentType: string) {
 }
 
 watch(
-    () => [props.objectType, currentHistoryId.value],
+    () => [props.objectType, currentHistoryId.value, lastUpdateTime.value],
     () => search(),
     { immediate: true }
 );
+
+defineExpose({ currentValue });
 </script>

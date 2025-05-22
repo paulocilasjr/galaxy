@@ -224,7 +224,7 @@ class XmlToolSource(ToolSource):
         if xrefs is None:
             return []
         return [
-            XrefDict(value=xref.text.strip(), reftype=str(xref.attrib["type"]))
+            XrefDict(value=xref.text.strip(), type=str(xref.attrib["type"]))
             for xref in xrefs.findall("xref")
             if xref.get("type") and xref.text
         ]
@@ -489,7 +489,7 @@ class XmlToolSource(ToolSource):
                 inherit_format = string_as_bool(collection_elem.get("inherit_format", None))
                 inherit_metadata = string_as_bool(collection_elem.get("inherit_metadata", None))
             default_format_source = collection_elem.get("format_source", None)
-            default_metadata_source = collection_elem.get("metadata_source", "")
+            default_metadata_source = collection_elem.get("metadata_source", None)
             filters = collection_elem.findall("filter")
 
             dataset_collector_descriptions = None
@@ -560,7 +560,7 @@ class XmlToolSource(ToolSource):
         app: Optional[ToolOutputActionApp] = None,
         default_format="data",
         default_format_source=None,
-        default_metadata_source="",
+        default_metadata_source=None,
         expression_type=None,
     ):
         from_expression = data_elem.get("from")
@@ -723,7 +723,13 @@ class XmlToolSource(ToolSource):
             return citations
 
         for citation_elem in citations_elem:
-            citation = parse_citation_elem(citation_elem)
+            try:
+                citation = parse_citation_elem(citation_elem)
+            except Exception:
+                if Version(self.parse_profile()) < Version("24.2"):
+                    continue
+                else:
+                    raise
             if citation:
                 citations.append(citation)
 
@@ -1045,13 +1051,18 @@ def _test_collection_def_dict(elem: Element) -> XmlTestCollectionDefDict:
         else:
             element_definition = __parse_param_elem(element)
         elements.append({"element_identifier": element_identifier, "element_definition": element_definition})
-
+    fields_json = "null"
+    fields_el = elem.find("fields")
+    if fields_el is not None:
+        fields_json = fields_el.text or "null"
+    fields = json.loads(fields_json)
     return XmlTestCollectionDefDict(
         model_class="TestCollectionDef",
         attributes=attrib,
         collection_type=collection_type,
         elements=elements,
         name=name,
+        fields=fields,
     )
 
 

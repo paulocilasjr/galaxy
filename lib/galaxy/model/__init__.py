@@ -83,6 +83,7 @@ from sqlalchemy import (
     inspect,
     Integer,
     join,
+    JSON,
     MetaData,
     not_,
     Numeric,
@@ -1401,6 +1402,17 @@ class ToolRequest(Base, Dictifiable, RepresentById):
     history: Mapped[Optional["History"]] = relationship(back_populates="tool_requests")
 
 
+class UserDynamicToolAssociation(Base, Dictifiable, RepresentById):
+    __tablename__ = "user_dynamic_tool_association"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dynamic_tool_id: Mapped[int] = mapped_column(ForeignKey("dynamic_tool.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
+    create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
+    hidden: Mapped[Optional[bool]] = mapped_column(default=False)
+    active: Mapped[Optional[bool]] = mapped_column(default=True)
+
+
 class DynamicTool(Base, Dictifiable, RepresentById):
     __tablename__ = "dynamic_tool"
 
@@ -1416,9 +1428,29 @@ class DynamicTool(Base, Dictifiable, RepresentById):
     hidden: Mapped[Optional[bool]] = mapped_column(default=True)
     active: Mapped[Optional[bool]] = mapped_column(default=True)
     value: Mapped[Optional[Dict[str, Any]]] = mapped_column(MutableJSONType)
+    public: Mapped[bool] = mapped_column(default=False, server_default=false())
 
-    dict_collection_visible_keys = ("id", "tool_id", "tool_format", "tool_version", "uuid", "active", "hidden")
-    dict_element_visible_keys = ("id", "tool_id", "tool_format", "tool_version", "uuid", "active", "hidden")
+    dict_collection_visible_keys = (
+        "id",
+        "tool_id",
+        "tool_format",
+        "tool_version",
+        "uuid",
+        "active",
+        "hidden",
+        "create_time",
+    )
+    dict_element_visible_keys = (
+        "id",
+        "tool_id",
+        "tool_format",
+        "tool_version",
+        "uuid",
+        "active",
+        "hidden",
+        "create_time",
+        "representation",
+    )
 
     def __init__(self, active=True, hidden=True, **kwd):
         super().__init__(**kwd)
@@ -1426,6 +1458,11 @@ class DynamicTool(Base, Dictifiable, RepresentById):
         self.hidden = hidden
         _uuid = kwd.get("uuid")
         self.uuid = get_uuid(_uuid)
+
+    def to_dict(self, view="collection", value_mapper=None):
+        rval = super().to_dict(view, value_mapper=None)
+        rval["representation"] = self.value
+        return rval
 
 
 class BaseJobMetric(Base):
@@ -1515,7 +1552,7 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     tool_stderr: Mapped[Optional[str]] = mapped_column(TEXT)
     exit_code: Mapped[Optional[int]]
     traceback: Mapped[Optional[str]] = mapped_column(TEXT)
-    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id"), index=True)
+    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id", ondelete="SET NULL"), index=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
     job_runner_name: Mapped[Optional[str]] = mapped_column(String(255))
     job_runner_external_id: Mapped[Optional[str]] = mapped_column(String(255), index=True)
@@ -1730,9 +1767,6 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         """
         return self.external_output_metadata
 
-    def get_session_id(self):
-        return self.session_id
-
     def get_user_id(self):
         return self.user_id
 
@@ -1889,8 +1923,8 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
     def add_parameter(self, name, value):
         self.parameters.append(JobParameter(name, value))
 
-    def add_input_dataset(self, name, dataset=None, dataset_id=None):
-        assoc = JobToInputDatasetAssociation(name, dataset)
+    def add_input_dataset(self, name, dataset=None, dataset_id=None, adapter_json=None):
+        assoc = JobToInputDatasetAssociation(name, dataset, adapter_json)
         if dataset is None and dataset_id is not None:
             assoc.dataset_id = dataset_id
         add_object_to_object_session(self, assoc)
@@ -1905,12 +1939,14 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         add_object_to_object_session(self, joda)
         self.output_datasets.append(joda)
 
-    def add_input_dataset_collection(self, name, dataset_collection):
-        self.input_dataset_collections.append(JobToInputDatasetCollectionAssociation(name, dataset_collection))
+    def add_input_dataset_collection(self, name, dataset_collection, adapter_json=None):
+        self.input_dataset_collections.append(
+            JobToInputDatasetCollectionAssociation(name, dataset_collection, adapter_json)
+        )
 
-    def add_input_dataset_collection_element(self, name, dataset_collection_element):
+    def add_input_dataset_collection_element(self, name, dataset_collection_element, adapter_json=None):
         self.input_dataset_collection_elements.append(
-            JobToInputDatasetCollectionElementAssociation(name, dataset_collection_element)
+            JobToInputDatasetCollectionElementAssociation(name, dataset_collection_element, adapter_json)
         )
 
     def add_output_dataset_collection(self, name, dataset_collection_instance):
@@ -1978,7 +2014,12 @@ class Job(Base, JobLike, UsesCreateAndUpdateTime, Dictifiable, Serializable):
         dict of tool parameter values.
         """
         param_dict = self.raw_param_dict()
-        tool = app.toolbox.get_tool(self.tool_id, tool_version=self.tool_version)
+        tool = app.toolbox.get_tool(
+            self.tool_id,
+            tool_version=self.tool_version,
+            tool_uuid=self.dynamic_tool and self.dynamic_tool.uuid,
+            user=self.user,
+        )
         param_dict = tool.params_from_strings(param_dict, app, ignore_errors=ignore_errors)
         return param_dict
 
@@ -2463,11 +2504,6 @@ class Task(Base, JobLike, RepresentById):
         # TODO: Merge into get_runner_external_id.
         return self.task_runner_external_id
 
-    def get_session_id(self):
-        # The Job's galaxy session is equal to the Job's session, so the
-        # Job's session is the same as the Task's session.
-        return self.get_job().get_session_id()
-
     def set_id(self, id):
         # This is defined in the SQL Alchemy's mapper and not here.
         # This should never be called.
@@ -2532,11 +2568,13 @@ class JobToInputDatasetAssociation(Base, RepresentById):
     dataset_id: Mapped[int] = mapped_column(ForeignKey("history_dataset_association.id"), index=True, nullable=True)
     dataset_version: Mapped[Optional[int]]
     name: Mapped[str] = mapped_column(String(255), nullable=True)
+    adapter: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     dataset: Mapped["HistoryDatasetAssociation"] = relationship(lazy="joined", back_populates="dependent_jobs")
     job: Mapped["Job"] = relationship(back_populates="input_datasets")
 
-    def __init__(self, name, dataset):
+    def __init__(self, name, dataset, adapter_json=None):
         self.name = name
+        self.adapter = adapter_json
         add_object_to_object_session(self, dataset)
         self.dataset = dataset
         self.dataset_version = 0  # We start with version 0 and update once the job is ready
@@ -2573,12 +2611,14 @@ class JobToInputDatasetCollectionAssociation(Base, RepresentById):
         ForeignKey("history_dataset_collection_association.id"), index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=True)
+    adapter: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     dataset_collection: Mapped["HistoryDatasetCollectionAssociation"] = relationship(lazy="joined")
     job: Mapped["Job"] = relationship(back_populates="input_dataset_collections")
 
-    def __init__(self, name, dataset_collection):
+    def __init__(self, name, dataset_collection, adapter_json=None):
         self.name = name
         self.dataset_collection = dataset_collection
+        self.adapter = adapter_json
 
 
 class JobToInputDatasetCollectionElementAssociation(Base, RepresentById):
@@ -2590,12 +2630,14 @@ class JobToInputDatasetCollectionElementAssociation(Base, RepresentById):
         ForeignKey("dataset_collection_element.id"), index=True, nullable=True
     )
     name: Mapped[str] = mapped_column(Unicode(255), nullable=True)
+    adapter: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONType, nullable=True)
     dataset_collection_element: Mapped["DatasetCollectionElement"] = relationship(lazy="joined")
     job: Mapped["Job"] = relationship(back_populates="input_dataset_collection_elements")
 
-    def __init__(self, name, dataset_collection_element):
+    def __init__(self, name, dataset_collection_element, adapter_json=None):
         self.name = name
         self.dataset_collection_element = dataset_collection_element
+        self.adapter = adapter_json
 
 
 # Many jobs may map to one HistoryDatasetCollection using these for a given
@@ -3241,9 +3283,9 @@ class HistoryAudit(Base):
     history_id: Mapped[int] = mapped_column(ForeignKey("history.id"), primary_key=True)
     update_time: Mapped[datetime] = mapped_column(default=now, primary_key=True)
 
-    # This class should never be instantiated.
-    # See https://github.com/galaxyproject/galaxy/pull/11914 for details.
-    __init__ = None  # type: ignore[assignment]
+    def __init__(self):
+        # See https://github.com/galaxyproject/galaxy/pull/11914 for details.
+        raise RuntimeError("This class should never be instantiated")
 
     def __repr__(self):
         try:
@@ -3933,6 +3975,8 @@ class Role(Base, Dictifiable, RepresentById):
         USER = "user"
         ADMIN = "admin"
         SHARING = "sharing"
+        USER_TOOL_CREATE = "user_tool_create"
+        USER_TOOL_EXECUTE = "user_tool_execute"
 
     @staticmethod
     def default_name(role_type):
@@ -6621,6 +6665,7 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
     element_count: Mapped[Optional[int]]
     create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
     update_time: Mapped[datetime] = mapped_column(default=now, onupdate=now, nullable=True)
+    fields: Mapped[Optional[bytes]] = mapped_column(JSONType, nullable=True)
 
     elements: Mapped[List["DatasetCollectionElement"]] = relationship(
         primaryjoin=(lambda: DatasetCollection.id == DatasetCollectionElement.dataset_collection_id),
@@ -6633,12 +6678,21 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
 
     populated_states = DatasetCollectionPopulatedState
 
-    def __init__(self, id=None, collection_type=None, populated=True, element_count=None):
+    def __init__(
+        self,
+        id=None,
+        collection_type=None,
+        populated=True,
+        element_count=None,
+        fields=None,
+    ):
         self.id = id
         self.collection_type = collection_type
         if not populated:
             self.populated_state = DatasetCollection.populated_states.NEW
         self.element_count = element_count
+        # TODO: persist fields...
+        self.fields = fields
 
     def _build_nested_collection_attributes_stmt(
         self,
@@ -6812,6 +6866,10 @@ class DatasetCollection(Base, Dictifiable, UsesAnnotations, Serializable):
             self._populated_optimized = _populated_optimized
 
         return self._populated_optimized
+
+    @property
+    def allow_implicit_mapping(self):
+        return self.collection_type != "record"
 
     @property
     def populated(self):
@@ -7770,7 +7828,7 @@ class Event(Base, RepresentById):
     history_id: Mapped[Optional[int]] = mapped_column(ForeignKey("history.id"), index=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
     message: Mapped[Optional[str]] = mapped_column(TrimmedString(1024))
-    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id"), index=True)
+    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id", ondelete="SET NULL"), index=True)
     tool_id: Mapped[Optional[str]] = mapped_column(String(255))
 
     history: Mapped[Optional["History"]] = relationship()
@@ -7829,7 +7887,7 @@ class GalaxySessionToHistoryAssociation(Base, RepresentById):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
-    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id"), index=True)
+    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id", ondelete="CASCADE"), index=True)
     history_id: Mapped[Optional[int]] = mapped_column(ForeignKey("history.id"), index=True)
     galaxy_session: Mapped[Optional["GalaxySession"]] = relationship(back_populates="histories")
     history: Mapped[Optional["History"]] = relationship(back_populates="galaxy_sessions")
@@ -8051,6 +8109,7 @@ class Workflow(Base, Dictifiable, RepresentById):
     logo_url: Mapped[Optional[str]] = mapped_column(Text)
     help: Mapped[Optional[str]] = mapped_column(Text)
     uuid: Mapped[Optional[Union[UUID, str]]] = mapped_column(UUIDType)
+    doi: Mapped[Optional[List[str]]] = mapped_column(JSON)
 
     steps: Mapped[List["WorkflowStep"]] = relationship(
         "WorkflowStep",
@@ -8841,7 +8900,9 @@ class InputWithRequest:
 @dataclass
 class InputToMaterialize:
     hda: "HistoryDatasetAssociation"
-    input_dataset: "WorkflowRequestToInputDatasetAssociation"
+    input_dataset: Union[
+        "WorkflowRequestToInputDatasetAssociation", "WorkflowRequestToInputDatasetCollectionAssociation"
+    ]
 
 
 class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializable):
@@ -8861,8 +8922,10 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
     input_parameters = relationship("WorkflowRequestInputParameter", back_populates="workflow_invocation")
     step_states = relationship("WorkflowRequestStepState", back_populates="workflow_invocation")
     input_step_parameters = relationship("WorkflowRequestInputStepParameter", back_populates="workflow_invocation")
-    input_datasets = relationship("WorkflowRequestToInputDatasetAssociation", back_populates="workflow_invocation")
-    input_dataset_collections = relationship(
+    input_datasets: Mapped[List["WorkflowRequestToInputDatasetAssociation"]] = relationship(
+        "WorkflowRequestToInputDatasetAssociation", back_populates="workflow_invocation"
+    )
+    input_dataset_collections: Mapped[List["WorkflowRequestToInputDatasetCollectionAssociation"]] = relationship(
         "WorkflowRequestToInputDatasetCollectionAssociation",
         back_populates="workflow_invocation",
     )
@@ -9159,12 +9222,21 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             request = input_dataset_assoc.request
             if request:
                 deferred = request.get("deferred", False)
-                if not deferred:
+                if not deferred and input_dataset_assoc.dataset:
                     hdas_to_materialize.append(
                         InputToMaterialize(
                             input_dataset_assoc.dataset,
                             input_dataset_assoc,
                         )
+                    )
+        for input_dataset_collection_association in self.input_dataset_collections:
+            request = input_dataset_collection_association.request
+            if request:
+                deferred = request.get("deferred", False)
+                if not deferred and input_dataset_collection_association.dataset_collection:
+                    hdas_to_materialize.extend(
+                        InputToMaterialize(hda, input_dataset_collection_association)
+                        for hda in input_dataset_collection_association.dataset_collection.dataset_instances
                     )
         return hdas_to_materialize
 
@@ -9356,7 +9428,7 @@ class WorkflowInvocation(Base, UsesCreateAndUpdateTime, Dictifiable, Serializabl
             self.input_step_parameters.append(request_to_content)
 
     def recover_inputs(self) -> Tuple[Dict[str, Any], str]:
-        inputs = {}
+        inputs: Dict[str, Any] = {}
         inputs_by = "name"
 
         have_referenced_steps_by_order_index = False
@@ -10446,9 +10518,7 @@ class UserAuthnzToken(Base, UserMixin, RepresentById):
     extra_data: Mapped[Optional[bytes]] = mapped_column(MutableJSONType)
     lifetime: Mapped[Optional[int]]
     assoc_type: Mapped[Optional[str]] = mapped_column(VARCHAR(64))
-    user: Mapped[Optional["User"]] = relationship(
-        back_populates="social_auth"
-    )  # type:ignore[assignment, unused-ignore]
+    user: Mapped[Optional["User"]] = relationship(back_populates="social_auth")
 
     # This static property is set at: galaxy.authnz.psa_authnz.PSAAuthnz
     sa_session = None
@@ -11593,7 +11663,7 @@ class UserAction(Base, RepresentById):
     id: Mapped[int] = mapped_column(primary_key=True)
     create_time: Mapped[datetime] = mapped_column(default=now, nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_user.id"), index=True)
-    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id"), index=True)
+    session_id: Mapped[Optional[int]] = mapped_column(ForeignKey("galaxy_session.id", ondelete="SET NULL"), index=True)
     action: Mapped[Optional[str]] = mapped_column(Unicode(255))
     context: Mapped[Optional[str]] = mapped_column(Unicode(512))
     params: Mapped[Optional[str]] = mapped_column(Unicode(1024))

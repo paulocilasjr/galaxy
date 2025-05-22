@@ -32,6 +32,7 @@ from galaxy.exceptions import (
     ToolMissingException,
 )
 from galaxy.job_execution.actions.post import ActionBox
+from galaxy.job_execution.compute_environment import ComputeEnvironment
 from galaxy.model import (
     Job,
     PostJobAction,
@@ -42,6 +43,7 @@ from galaxy.model import (
 )
 from galaxy.model.base import ensure_object_added_to_session
 from galaxy.model.dataset_collections import matching
+from galaxy.model.dataset_collections.query import HistoryQuery
 from galaxy.schema.invocation import (
     CancelReason,
     FailureReason,
@@ -54,11 +56,17 @@ from galaxy.schema.invocation import (
 )
 from galaxy.tool_util.cwl.util import set_basename_and_derived_properties
 from galaxy.tool_util.parser import get_input_source
-from galaxy.tool_util.parser.output_objects import ToolExpressionOutput
+from galaxy.tool_util.parser.output_objects import (
+    ToolExpressionOutput,
+    ToolOutput,
+    ToolOutputCollection,
+)
+from galaxy.tool_util_models.dynamic_tool_models import DynamicToolCreatePayload
 from galaxy.tools import (
     DatabaseOperationTool,
     DefaultToolState,
     get_safe_version,
+    Tool,
 )
 from galaxy.tools.execute import (
     execute,
@@ -90,7 +98,6 @@ from galaxy.tools.parameters.grouping import (
     ConditionalWhen,
     Repeat,
 )
-from galaxy.tools.parameters.history_query import HistoryQuery
 from galaxy.tools.parameters.options import ParameterOption
 from galaxy.tools.parameters.populate_model import populate_model
 from galaxy.tools.parameters.workflow_utils import (
@@ -117,6 +124,7 @@ from galaxy.workflow.workflow_parameter_input_definitions import (
 )
 
 if TYPE_CHECKING:
+    from galaxy.managers.context import ProvidesUserContext
     from galaxy.schema.invocation import InvocationMessageUnion
     from galaxy.workflow.run import WorkflowProgress
 
@@ -142,7 +150,9 @@ class ConditionalStepWhen(BooleanToolParameter):
     pass
 
 
-def to_cwl(value, hda_references, step):
+def to_cwl(
+    value, hda_references, step: Optional[WorkflowStep] = None, compute_environment: Optional[ComputeEnvironment] = None
+):
     element_identifier = None
     if isinstance(value, model.HistoryDatasetCollectionAssociation):
         value = value.collection
@@ -152,15 +162,16 @@ def to_cwl(value, hda_references, step):
     if isinstance(value, model.HistoryDatasetAssociation):
         # I think the following two checks are needed but they may
         # not be needed.
-        if not value.dataset.in_ready_state():
-            why = f"dataset [{value.id}] is needed for valueFrom expression and is non-ready"
-            raise DelayedWorkflowEvaluation(why=why)
-        if not value.is_ok:
-            raise FailWorkflowEvaluation(
-                why=InvocationFailureDatasetFailed(
-                    reason=FailureReason.dataset_failed, hda_id=value.id, workflow_step_id=step.id
+        if step:
+            if not value.dataset.in_ready_state():
+                why = f"dataset [{value.id}] is needed for valueFrom expression and is non-ready"
+                raise DelayedWorkflowEvaluation(why=why)
+            if not value.is_ok:
+                raise FailWorkflowEvaluation(
+                    why=InvocationFailureDatasetFailed(
+                        reason=FailureReason.dataset_failed, hda_id=value.id, workflow_step_id=step.id
+                    )
                 )
-            )
         if value.ext == "expression.json":
             with open(value.get_file_name()) as f:
                 # OUR safe_loads won't work, will not load numbers, etc...
@@ -171,6 +182,7 @@ def to_cwl(value, hda_references, step):
                 "class": "File",
                 "location": f"step_input://{len(hda_references)}",
                 "format": value.extension,
+                "path": compute_environment.input_path_rewrite(value) if compute_environment else value.get_file_name(),
             }
             set_basename_and_derived_properties(
                 properties, value.dataset.created_from_basename or element_identifier or value.name
@@ -178,22 +190,33 @@ def to_cwl(value, hda_references, step):
             return properties
     elif isinstance(value, model.DatasetCollection):
         if value.collection_type == "list":
-            return [to_cwl(dce, hda_references=hda_references, step=step) for dce in value.dataset_elements]
+            return [
+                to_cwl(dce, hda_references=hda_references, step=step, compute_environment=compute_environment)
+                for dce in value.dataset_elements
+            ]
         else:
             # Could be record or nested lists
             rval = {}
             for element in value.elements:
                 rval[element.element_identifier] = to_cwl(
-                    element.element_object, hda_references=hda_references, step=step
+                    element.element_object,
+                    hda_references=hda_references,
+                    step=step,
+                    compute_environment=compute_environment,
                 )
             return rval
     elif isinstance(value, list):
-        return [to_cwl(v, hda_references=hda_references, step=step) for v in value]
+        return [
+            to_cwl(v, hda_references=hda_references, step=step, compute_environment=compute_environment) for v in value
+        ]
     elif is_runtime_value(value):
         return None
     elif isinstance(value, dict):
         # Nested tool state, such as conditionals
-        return {k: to_cwl(v, hda_references=hda_references, step=step) for k, v in value.items()}
+        return {
+            k: to_cwl(v, hda_references=hda_references, step=step, compute_environment=compute_environment)
+            for k, v in value.items()
+        }
     else:
         return value
 
@@ -560,7 +583,7 @@ class WorkflowModule:
         for input_dict in all_inputs:
             name = input_dict["name"]
             data = progress.replacement_for_input(self.trans, step, input_dict)
-            can_map_over = hasattr(data, "collection")  # and data.collection.allow_implicit_mapping
+            can_map_over = hasattr(data, "collection") and data.collection.allow_implicit_mapping
 
             if not can_map_over:
                 continue
@@ -598,6 +621,9 @@ class WorkflowModule:
                     effective_input_collection_type,
                     dataset_collection_type_descriptions,
                 )
+                if not progress.subworkflow_structure and history_query.direct_match(data):
+                    continue
+
                 subcollection_type_description = history_query.can_map_over(data) or None
                 if subcollection_type_description:
                     subcollection_type_list = subcollection_type_description.collection_type.split(":")
@@ -1169,6 +1195,12 @@ class InputDataCollectionModule(InputModule):
         else:
             collection_type = self.default_collection_type
         state_as_dict["collection_type"] = collection_type
+        if "fields" in inputs:
+            fields = inputs["fields"]
+        else:
+            fields = None
+        state_as_dict["collection_type"] = collection_type
+        state_as_dict["fields"] = fields
         return state_as_dict
 
 
@@ -1832,16 +1864,21 @@ class ToolModule(WorkflowModule):
     type = "tool"
     name = "Tool"
 
-    def __init__(self, trans, tool_id, tool_version=None, exact_tools=True, tool_uuid=None, **kwds):
+    def __init__(
+        self, trans: "ProvidesUserContext", tool_id, tool_version=None, exact_tools=True, tool_uuid=None, **kwds
+    ):
         super().__init__(trans, content_id=tool_id, **kwds)
         self.tool_id = tool_id
         self.tool_version = str(tool_version) if tool_version else None
         self.tool_uuid = tool_uuid
-        self.tool = None
+        self.tool: Optional[Tool] = None
         if getattr(trans.app, "toolbox", None):
-            self.tool = trans.app.toolbox.get_tool(
-                tool_id, tool_version=tool_version, exact=exact_tools, tool_uuid=tool_uuid
-            )
+            if trans.user and tool_uuid:
+                self.tool = trans.app.toolbox.get_unprivileged_tool_or_none(trans.user, tool_uuid=tool_uuid)
+            if not self.tool:
+                self.tool = trans.app.toolbox.get_tool(
+                    tool_id, tool_version=tool_version, exact=exact_tools, tool_uuid=tool_uuid
+                )
         if self.tool:
             current_tool_version = str(self.tool.version)
             if exact_tools and self.tool_version and self.tool_version != current_tool_version:
@@ -1855,10 +1892,10 @@ class ToolModule(WorkflowModule):
                         f"Exact tool specified during workflow module creation for [{tool_id}] but couldn't find correct version [{tool_version}]."
                     )
                     self.tool = None
-        self.post_job_actions = {}
-        self.runtime_post_job_actions = {}
-        self.workflow_outputs = []
-        self.version_changes = []
+        self.post_job_actions: Dict[str, Any] = {}
+        self.runtime_post_job_actions: Dict[str, Any] = {}
+        self.workflow_outputs: List[Dict[str, Any]] = []
+        self.version_changes: List[str] = []
 
     # ---- Creating modules from various representations ---------------------
 
@@ -1872,9 +1909,7 @@ class ToolModule(WorkflowModule):
         if tool_id is None and tool_uuid is None:
             tool_representation = d.get("tool_representation")
             if tool_representation:
-                create_request = {
-                    "representation": tool_representation,
-                }
+                create_request = DynamicToolCreatePayload(src="representation", representation=tool_representation)
                 if not trans.user_is_admin:
                     raise exceptions.AdminRequiredException("Only admin users can create tools dynamically.")
                 dynamic_tool = trans.app.dynamic_tool_manager.create_tool(trans, create_request, allow_load=False)
@@ -2018,13 +2053,18 @@ class ToolModule(WorkflowModule):
                             )
                         )
                     elif isinstance(input, DataCollectionToolParameter):
+                        raw_collection_types = input.collection_types
+                        if not raw_collection_types:
+                            # we have some "" strings in the database and coming from the form
+                            # that we should probably want to represent as a None.
+                            raw_collection_types = None
                         inputs.append(
                             dict(
                                 name=prefixed_name,
                                 label=prefixed_label,
                                 multiple=input.multiple,
                                 input_type="dataset_collection",
-                                collection_types=input.collection_types,
+                                collection_types=raw_collection_types,
                                 optional=input.optional,
                                 extensions=input.extensions,
                             )
@@ -2050,10 +2090,10 @@ class ToolModule(WorkflowModule):
             for name, tool_output in self.tool.outputs.items():
                 if filter_output(self.tool, tool_output, self.state.inputs):
                     continue
-                extra_kwds = {}
+                extra_kwds: Dict[str, Any] = {}
                 if isinstance(tool_output, ToolExpressionOutput):
                     extra_kwds["parameter"] = True
-                if tool_output.collection:
+                if isinstance(tool_output, ToolOutputCollection):
                     extra_kwds["collection"] = True
                     collection_type = tool_output.structure.collection_type
                     if not collection_type and tool_output.structure.collection_type_from_rules:
@@ -2065,10 +2105,14 @@ class ToolModule(WorkflowModule):
                                 collection_type = rule_set.collection_type
                     extra_kwds["collection_type"] = collection_type
                     extra_kwds["collection_type_source"] = tool_output.structure.collection_type_source
-                    formats = ["input"]  # TODO: fix
-                elif tool_output.format_source is not None:
+                    formats: List[Optional[str]] = ["input"]  # TODO: fix
+                elif (
+                    isinstance(tool_output, (ToolOutput, ToolExpressionOutput, ToolOutputCollection))
+                    and tool_output.format_source is not None
+                ):
                     formats = ["input"]  # default to special name "input" which remove restrictions on connections
                 else:
+                    assert isinstance(tool_output, (ToolOutput, ToolExpressionOutput))
                     formats = [tool_output.format]
                 for change_format_model in tool_output.change_format:
                     format = change_format_model["format"]
@@ -2080,7 +2124,9 @@ class ToolModule(WorkflowModule):
                         params["on_string"] = "input dataset(s)"
                         params["tool"] = self.tool
                         extra_kwds["label"] = fill_template(
-                            tool_output.label, context=params, python_template_version=self.tool.python_template_version
+                            tool_output.label,
+                            context=params,
+                            python_template_version=self.tool.python_template_version,
                         )
                     except Exception:
                         pass
@@ -2259,7 +2305,9 @@ class ToolModule(WorkflowModule):
     ) -> Optional[bool]:
         invocation = invocation_step.workflow_invocation
         step = invocation_step.workflow_step
-        tool = trans.app.toolbox.get_tool(step.tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid)
+        tool = trans.app.toolbox.get_tool(
+            step.tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid, user=trans.user
+        )
         if not tool.is_workflow_compatible:
             # TODO: why do we even create an invocation, seems like something we could check on submit?
             message = f"Specified tool [{tool.id}] in step {step.order_index + 1} is not workflow-compatible."

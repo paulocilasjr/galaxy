@@ -118,8 +118,10 @@ class VisualizationPlugin(ServesTemplatesPluginMixin):
             "name": self.name,
             "html": self.config.get("name"),
             "description": self.config.get("description"),
+            "data_sources": self.config.get("data_sources"),
             "help": self.config.get("help"),
             "logo": self.config.get("logo"),
+            "tags": self.config.get("tags"),
             "title": self.config.get("title"),
             "target": self.config.get("render_target", "galaxy_main"),
             "embeddable": self.config.get("embeddable"),
@@ -272,10 +274,6 @@ class ScriptVisualizationPlugin(VisualizationPlugin):
         render_vars.update({"script_attributes": self.config["entry_point"]["attr"]})
         template_filename = os.path.join(self.MAKO_TEMPLATE)
         return trans.fill_template(template_filename, template_lookup=self.template_lookup, **render_vars)
-
-
-class ChartVisualizationPlugin(ScriptVisualizationPlugin):
-    MAKO_TEMPLATE = "chart_entry_point.mako"
 
 
 class StaticFileVisualizationPlugin(VisualizationPlugin):

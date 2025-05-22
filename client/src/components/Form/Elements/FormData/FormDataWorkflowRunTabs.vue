@@ -2,9 +2,9 @@
 import { faEye, faUpload } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 
-import type { CollectionType } from "@/components/History/adapters/buildCollectionModal";
+import type { CollectionBuilderType } from "@/components/History/adapters/buildCollectionModal";
 import { useUploadConfigurations } from "@/composables/uploadConfigurations";
 import { useHistoryStore } from "@/stores/historyStore";
 
@@ -27,7 +27,7 @@ const props = defineProps<{
     currentValue?: DataOption[];
     canBrowse?: boolean;
     extensions?: string[];
-    collectionType?: CollectionType;
+    collectionType?: CollectionBuilderType;
     stepTitle?: string;
     workflowTab: string;
 }>();
@@ -67,10 +67,26 @@ function collectionCreated(collection: any) {
     emit("focus");
 }
 
+const creatorIndex = ref();
+
 function goToFirstWorkflowTab() {
     emit("focus");
     currentWorkflowTab.value = WorkflowRunTabs.view;
 }
+
+// hack for AG grid - it doesn't resize automatically so we need to force it
+// to resize when the tab has a window
+watch(
+    currentWorkflowTab,
+    () => {
+        nextTick(() => {
+            if (creatorIndex.value) {
+                creatorIndex.value.redrawCreator();
+            }
+        });
+    },
+    { immediate: true }
+);
 
 // TODO:
 // - Add support for the browse files option we have in FormData
@@ -117,6 +133,7 @@ function goToFirstWorkflowTab() {
         <div v-show="currentWorkflowTab === WorkflowRunTabs.create && props.currentVariant?.src === 'hdca'">
             <CollectionCreatorIndex
                 v-if="currentHistoryId && props.collectionType"
+                ref="creatorIndex"
                 :history-id="currentHistoryId"
                 :collection-type="props.collectionType"
                 show

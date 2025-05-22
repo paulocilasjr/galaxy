@@ -254,11 +254,10 @@ class WorkflowsManager(sharable.SharableModelManager[model.StoredWorkflow], dele
                                 raise exceptions.RequestParameterInvalidException(message)
                             stmt = stmt.where(StoredWorkflowUserShareAssociation.user == user)
                         elif q == "bookmarked":
-                            stmt = (
-                                stmt.join(model.StoredWorkflowMenuEntry)
-                                .where(model.StoredWorkflowMenuEntry.stored_workflow_id == StoredWorkflow.id)
-                                .where(model.StoredWorkflowMenuEntry.user_id == user.id)
-                            )
+                            stmt = stmt.join(
+                                model.StoredWorkflowMenuEntry,
+                                model.StoredWorkflowMenuEntry.stored_workflow_id == StoredWorkflow.id,
+                            ).where(model.StoredWorkflowMenuEntry.user_id == user.id)
                 elif isinstance(term, RawTextTerm):
                     tf = w_tag_filter(term.text, False)
                     alias = aliased(User)
@@ -818,6 +817,13 @@ class WorkflowContentsManager(UsesAnnotations):
 
         if "logo_url" in data:
             workflow.logo_url = data["logo_url"]
+
+        dois = data.get("doi", None)
+        if dois:
+            for doi in dois:
+                if not util.validate_doi(doi):
+                    raise exceptions.RequestParameterInvalidException(f"Invalid DOI format: {doi}")
+            workflow.doi = data["doi"]
         try:
             if "help" in data:
                 workflow.help = data["help"]
@@ -918,7 +924,7 @@ class WorkflowContentsManager(UsesAnnotations):
 
         return workflow, missing_tool_tups
 
-    def workflow_to_dict(self, trans, stored, style="export", version=None, history=None):
+    def workflow_to_dict(self, trans, stored, style="export", version=None, history=None, instance_id=None):
         """Export the workflow contents to a dictionary ready for JSON-ification and to be
         sent out via API for instance. There are three styles of export allowed 'export', 'instance', and
         'editor'. The Galaxy team will do its best to preserve the backward compatibility of the
@@ -935,6 +941,12 @@ class WorkflowContentsManager(UsesAnnotations):
             version = None
         if version is not None:
             version = int(version)
+        elif instance_id:
+            # If the instance_id is provided, we need to extract the workflow instance via the version.
+            for i, workflow in enumerate(reversed(stored.workflows)):
+                if workflow.id == instance_id:
+                    version = i
+                    break
         workflow = stored.get_internal_version(version)
         if style == "export":
             style = self.app.config.default_workflow_export_format
@@ -1004,7 +1016,7 @@ class WorkflowContentsManager(UsesAnnotations):
                 wf_dict = from_galaxy_native(wf_dict, None, json_wrapper=True)
                 f.write(wf_dict["yaml_content"])
 
-    def _workflow_to_dict_run(self, trans, stored, workflow, history=None):
+    def _workflow_to_dict_run(self, trans: ProvidesUserContext, stored, workflow, history=None):
         """
         Builds workflow dictionary used by run workflow form
         """
@@ -1048,8 +1060,12 @@ class WorkflowContentsManager(UsesAnnotations):
             if step.type == "tool":
                 incoming: Dict[str, Any] = {}
                 tool = trans.app.toolbox.get_tool(
-                    step.tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid
+                    step.tool_id, tool_version=step.tool_version, tool_uuid=step.tool_uuid, user=trans.user
                 )
+                if not tool:
+                    raise exceptions.MessageException(
+                        f"Following tool missing or inaccessible: '{step.tool_id}/{step.tool_uuid}'"
+                    )
                 params_to_incoming(incoming, tool.inputs, step.state.inputs, trans.app)
                 step_model = tool.to_json(
                     trans, incoming, workflow_building_mode=workflow_building_modes.USE_HISTORY, history=history
@@ -1245,6 +1261,7 @@ class WorkflowContentsManager(UsesAnnotations):
         data["readme"] = workflow.readme
         data["help"] = workflow.help
         data["logo_url"] = workflow.logo_url
+        data["doi"] = workflow.doi
         data["source_metadata"] = workflow.source_metadata
         data["annotation"] = self.get_item_annotation_str(trans.sa_session, trans.user, stored) or ""
         data["comments"] = [comment.to_dict() for comment in workflow.comments]
@@ -1507,6 +1524,8 @@ class WorkflowContentsManager(UsesAnnotations):
             data["help"] = workflow.help
         if workflow.logo_url is not None:
             data["logo_url"] = workflow.logo_url
+        if workflow.doi is not None:
+            data["doi"] = workflow.doi
 
         # For each step, rebuild the form and encode the state
         for step in workflow.steps:
@@ -1714,6 +1733,7 @@ class WorkflowContentsManager(UsesAnnotations):
         item["readme"] = workflow.readme
         item["help"] = workflow.help
         item["logo_url"] = workflow.logo_url
+        item["doi"] = workflow.doi
 
         steps = {}
         steps_to_order_index = {}
@@ -2040,8 +2060,14 @@ class WorkflowContentsManager(UsesAnnotations):
         for step in workflow.steps:
             if step.type == "tool":
                 if step.tool_id:
-                    if {"tool_id": step.tool_id, "tool_version": step.tool_version} not in tools:
-                        tools.append({"tool_id": step.tool_id, "tool_version": step.tool_version})
+                    if {
+                        "tool_id": step.tool_id,
+                        "tool_version": step.tool_version,
+                        "tool_uuid": step.tool_uuid,
+                    } not in tools:
+                        tools.append(
+                            {"tool_id": step.tool_id, "tool_version": step.tool_version, "tool_uuid": step.tool_uuid}
+                        )
             elif step.type == "subworkflow":
                 tools.extend(self.get_all_tools(step.subworkflow))
         return tools

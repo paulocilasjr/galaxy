@@ -6,11 +6,7 @@ import { BAlert, BButton } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { GalaxyApi } from "@/api";
-import {
-    type NotificationCategory,
-    type NotificationChannel,
-    type UserNotificationPreferences,
-} from "@/api/notifications";
+import type { NotificationCategory, NotificationChannel, UserNotificationPreferences } from "@/api/notifications";
 import { useConfig } from "@/composables/config";
 import { Toast } from "@/composables/toast";
 import {
@@ -115,7 +111,7 @@ function onChannelChange(category: NotificationCategory, channel: NotificationCh
             h1
             :separator="props.embedded"
             inline
-            size="xl"
+            size="lg"
             class="notifications-preferences-header"
             :class="headerSize">
             Manage notifications preferences
@@ -177,7 +173,7 @@ function onChannelChange(category: NotificationCategory, channel: NotificationCh
         </BAlert>
 
         <div v-if="!loading && config.enable_notification_system" class="d-flex justify-content-center">
-            <AsyncButton :action="updateNotificationsPreferences" :icon="faSave" variant="primary" size="md">
+            <AsyncButton :action="updateNotificationsPreferences" :icon="faSave" color="blue" size="medium">
                 <span v-localize>Save</span>
             </AsyncButton>
         </div>

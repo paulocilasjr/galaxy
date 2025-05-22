@@ -1,7 +1,7 @@
 import { faAws, faDropbox, faGoogleDrive } from "@fortawesome/free-brands-svg-icons";
 import { faCloud, faFolderTree, faNetworkWired, type IconDefinition } from "font-awesome-6";
 
-import { type components } from "@/api/schema";
+import type { components } from "@/api/schema";
 import { contains } from "@/utils/filtering";
 
 export type FileSourceTemplateSummary = components["schemas"]["FileSourceTemplateSummary"];
@@ -57,6 +57,10 @@ export const templateTypes: FileSourceTypesDetail = {
     zenodo: {
         icon: faNetworkWired,
         message: "This is a remote file source that connects with the Zenodo instance.",
+    },
+    rspace: {
+        icon: faNetworkWired,
+        message: "This is a remote file source that connects with the Gallery of an RSpace instance.",
     },
 };
 

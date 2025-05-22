@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres
+        image: postgres:17
         # Provide the password for postgres
         env:
           POSTGRES_PASSWORD: postgres
@@ -39,11 +39,13 @@ jobs:
         with:
           fetch-depth: 1
           path: galaxy
+          persist-credentials: false
       - name: Checkout Bioblend
         uses: actions/checkout@v4
         with:
           repository: galaxyproject/bioblend
           path: bioblend
+          persist-credentials: false
       - name: Cache pip dir
         uses: actions/cache@v4
         with:

@@ -5,7 +5,7 @@ import { onMounted, onUpdated, ref } from "vue";
 import { getCitations } from "@/components/Citation/services";
 import { useConfig } from "@/composables/config";
 
-import { type Citation } from ".";
+import type { Citation } from ".";
 
 import CitationItem from "@/components/Citation/CitationItem.vue";
 
@@ -53,7 +53,7 @@ onMounted(async () => {
                     <BNavItem
                         :active="outputFormat === outputFormats.CITATION"
                         @click="outputFormat = outputFormats.CITATION">
-                        Citations (APA)
+                        References (APA)
                     </BNavItem>
 
                     <BNavItem
@@ -78,7 +78,7 @@ onMounted(async () => {
             </div>
         </BCard>
         <div v-else-if="citations.length">
-            <BButton v-b-toggle="id" variant="primary">Citations</BButton>
+            <BButton v-b-toggle="id" variant="primary">References</BButton>
 
             <BCollapse
                 :id="id.replace(/ /g, '_')"

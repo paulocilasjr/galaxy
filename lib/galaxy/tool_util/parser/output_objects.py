@@ -175,24 +175,25 @@ class ToolOutput(ToolOutputBase):
             hidden=self.hidden,
             format=self.format,
             format_source=self.format_source,
-            metadata_source=self.metadata_source or None,  # model is decorated as Optional
+            metadata_source=self.metadata_source,
             discover_datasets=[d.to_model() for d in self.dataset_collector_descriptions],
+            from_work_dir=self.from_work_dir,
         )
 
     @staticmethod
     def from_dict(name: str, output_dict: Dict[str, Any], app: Optional[ToolOutputActionApp] = None) -> "ToolOutput":
         output = ToolOutput(name)
-        output.format = output_dict.get("format", "data")
+        output.format = output_dict.get("format") or "data"
         output.change_format = []
-        output.format_source = output_dict.get("format_source", None)
-        output.default_identifier_source = output_dict.get("default_identifier_source", None)
-        output.metadata_source = output_dict.get("metadata_source", "")
-        output.parent = output_dict.get("parent", None)
-        output.label = output_dict.get("label", None)
+        output.format_source = output_dict.get("format_source")
+        output.default_identifier_source = output_dict.get("default_identifier_source")
+        output.metadata_source = output_dict.get("metadata_source")
+        output.parent = output_dict.get("parent")
+        output.label = output_dict.get("label")
         output.count = output_dict.get("count", 1)
         output.filters = []
-        output.from_work_dir = output_dict.get("from_work_dir", None)
-        output.hidden = output_dict.get("hidden", False)
+        output.from_work_dir = output_dict.get("from_work_dir")
+        output.hidden = output_dict.get("hidden") or False
         # TODO: implement tool output action group fixes
         if app is not None:
             output.actions = ToolOutputActionGroup(app, None)
@@ -424,12 +425,14 @@ class ToolOutputCollectionStructure:
         collection_type_from_rules: Optional[str] = None,
         structured_like: Optional[str] = None,
         dataset_collector_descriptions: Optional[List[DatasetCollectionDescription]] = None,
+        fields=None,
     ) -> None:
         self.collection_type = collection_type
         self.collection_type_source = collection_type_source
         self.collection_type_from_rules = collection_type_from_rules
         self.structured_like = structured_like
         self.dataset_collector_descriptions = dataset_collector_descriptions or []
+        self.fields = fields
         if collection_type and collection_type_source:
             raise ValueError("Cannot set both type and type_source on collection output.")
         if (
@@ -446,6 +449,10 @@ class ToolOutputCollectionStructure:
             raise ValueError(
                 "Cannot specify dynamic structure (discover_datasets) and collection type attributes structured_like or collection_type_from_rules."
             )
+        if collection_type == "record" and fields is None:
+            raise ValueError("If record outputs are defined, fields must be defined as well.")
+        if fields is not None and collection_type != "record":
+            raise ValueError("If fields are specified for outputs, the collection type must be record.")
         self.dynamic = bool(dataset_collector_descriptions)
 
     def collection_prototype(self, inputs, type_registry):
@@ -455,7 +462,7 @@ class ToolOutputCollectionStructure:
         else:
             collection_type = self.collection_type
             assert collection_type
-            collection_prototype = type_registry.prototype(collection_type)
+            collection_prototype = type_registry.prototype(collection_type, fields=self.fields)
             collection_prototype.collection_type = collection_type
         return collection_prototype
 

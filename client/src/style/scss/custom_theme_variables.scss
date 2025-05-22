@@ -78,10 +78,13 @@ html,
     --spacing-8: calc(var(--spacing) * 8);
 
     --font-size-small: 0.75rem;
-    --font-size-base: 0.85rem;
+    --font-size-medium: 0.85rem;
     --font-size-large: 1rem;
 
     // masthead specific
+    --masthead-height: #{$masthead-height};
+    --masthead-logo-height: calc(var(--masthead-height) - 0.5rem);
+
     --masthead-color: #{$masthead-color};
     --masthead-text-color: #{$masthead-text-color};
     --masthead-text-hover: #{$masthead-text-hover};

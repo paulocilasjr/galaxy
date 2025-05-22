@@ -47,9 +47,7 @@ from galaxy.job_metrics import (
     Safety,
 )
 from galaxy.managers.collections import DatasetCollectionManager
-from galaxy.managers.context import (
-    ProvidesUserContext,
-)
+from galaxy.managers.context import ProvidesUserContext
 from galaxy.managers.datasets import DatasetManager
 from galaxy.managers.hdas import HDAManager
 from galaxy.managers.lddas import LDDAManager
@@ -379,7 +377,7 @@ class JobSearch:
         tool_version: Optional[str],
         param: ToolStateJobInstancePopulatedT,
         param_dump: ToolStateDumpedToJsonInternalT,
-        job_state: Optional[JobStatesT] = (Job.states.OK, Job.states.SKIPPED),
+        job_state: Optional[JobStatesT] = (Job.states.OK,),
         require_name_match: bool = True,
     ):
         """Search for jobs producing same results using the 'inputs' part of a tool POST."""
@@ -1099,7 +1097,7 @@ def summarize_destination_params(trans, job):
     return destination_params
 
 
-def summarize_job_parameters(trans, job: Job):
+def summarize_job_parameters(trans: ProvidesUserContext, job: Job):
     """Produce a dict-ified version of job parameters ready for tabular rendering.
 
     Precondition: the caller has verified the job is accessible to the user
@@ -1191,7 +1189,7 @@ def summarize_job_parameters(trans, job: Job):
                             raise Exception(
                                 f"Unhandled data input parameter type encountered {element.__class__.__name__}"
                             )
-                    rval.append(dict(text=input.label, depth=depth, value=value))
+                    rval.append(dict(text=input.label or input.name, depth=depth, value=value))
                 elif input.visible:
                     if hasattr(input, "label") and input.label:
                         label = input.label
@@ -1222,7 +1220,10 @@ def summarize_job_parameters(trans, job: Job):
     # Load the tool
     app = trans.app
     toolbox = app.toolbox
-    tool = toolbox.get_tool(job.tool_id, job.tool_version)
+    tool_uuid = None
+    if dynamic_tool := job.dynamic_tool:
+        tool_uuid = dynamic_tool.uuid
+    tool = toolbox.get_tool(job.tool_id, job.tool_version, tool_uuid=tool_uuid, user=trans.user)
 
     params_objects = None
     parameters = []
