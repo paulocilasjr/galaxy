@@ -182,4 +182,7 @@
   <section id="multimodar_learner" name="Multimodal Learner">
     <tool file="multimodal_learner/multimodal_learner.xml" />
   </section>
+  <section id="combined_reporter" name="Combined Reporter">
+    <tool file="combined_reporter/combined_reporter.xml" />
+  </section>
 </toolbox>
