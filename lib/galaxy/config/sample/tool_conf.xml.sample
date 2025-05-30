@@ -156,6 +156,9 @@
     <tool file="interactive/interactivetool_rstudio_bioc_3.20.xml" />
   </section>
   -->
+  <section id="bagging" name="Mil Bag">
+    <tool file="bagging/mil_bag.xml" />
+  </section>
   <section id="ludwig" name="Ludwig tools">
     <tool file="ludwig/ludwig_autogenconfig.xml" />
     <tool file="ludwig/ludwig_embeddings.xml" />
@@ -175,5 +178,8 @@
   </section>
   <section id="tabular_learner" name="Tabular Learner">
     <tool file="tabular_learner/tabular_learner.xml" />
+  </section>
+  <section id="multimodar_learner" name="Multimodal Learner">
+    <tool file="multimodal_learner/multimodal_learner.xml" />
   </section>
 </toolbox>
