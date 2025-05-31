@@ -1,21 +1,19 @@
 <tool id="combined_reporter" name="Combined Reporter">
     <command><![CDATA[
-        #if $raw_data
-            unzip -o -q '$raw_data' -d ./
-        #end if
-        python '$__tool_directory__/multimodal_learner.py'
-            --input_csv_train '$input_csv_train'
-            --input_csv_test '$input_csv_test'
-            --target_column '$target_column'
-            --output_csv '$model_metrics'
+        python '$__tool_directory__/combined_reporter.py'
+            #if $input_json
+                --input_json '$input_json'
+            #end if
+            #if $input_html
+                --input_html '$input_html'
+            #end if
+            --output_svg '$model_figure'
     ]]></command>
     <inputs>
-        <param name="input_csv_train" type="data" format="csv" label="Input Train CSV File"/>
-        <param name="input_csv_test" type="data" format="csv" label="Input Test CSV File" />
-        <param name="raw_data" type="data" format="zip" label="Zip File with Images"/>
-        <param name="target_column" type="text" label="Target Column Name"/>
+        <param name="input_json" type="data" format="json" label="Input JSON File" optional="true"/>
+        <param name="input_html" type="data" format="html" label="Input HTML File" optional="true"/>
     </inputs>
     <outputs>
-        <data name="model_metrics" format="csv" label="model_metrics.csv"/>
+        <data name="model_figure" format="svg" label="model_figure.svg"/>
     </outputs>
 </tool>

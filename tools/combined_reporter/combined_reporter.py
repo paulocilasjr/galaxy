@@ -1,13 +1,11 @@
-"""
-developing
-"""
 import argparse
-import os
 import json
-import csv
 from bs4 import BeautifulSoup
 from abc import ABC, abstractmethod
+import matplotlib.pyplot as plt
+import matplotlib.table as table
 
+# Helper function to convert string values to appropriate types
 def convert_value(value_str):
     if value_str.lower() == 'none':
         return None
@@ -23,6 +21,7 @@ def convert_value(value_str):
         except ValueError:
             return value_str
 
+# Model class to store model information
 class Model:
     def __init__(self, name, metrics=None, hyperparameters=None, test_set_results=None):
         self.name = name
@@ -38,6 +37,7 @@ class Model:
             "test_set_results": self.test_set_results
         }
 
+# Abstract base class for file parsers
 class FileParser(ABC):
     def __init__(self, file_path):
         self.file_path = file_path
@@ -46,6 +46,7 @@ class FileParser(ABC):
     def parse(self):
         pass
 
+# Parser for HTML files
 class HTMLParser(FileParser):
     def parse(self):
         with open(self.file_path, 'r') as f:
@@ -108,6 +109,7 @@ class HTMLParser(FileParser):
                 return test_set_results
         return {}
 
+# Parser for JSON files
 class JSONParser(FileParser):
     def parse(self):
         with open(self.file_path, 'r') as f:
@@ -123,58 +125,91 @@ class JSONParser(FileParser):
             models[model_name] = model
         return models
 
-class CSVParser(FileParser):
-    def parse(self):
-        models = {}
-        with open(self.file_path, 'r') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                model_name = row["Model"]
-                metrics = {k: convert_value(v) for k, v in row.items() if k != "Model"}
-                model = Model(name=model_name, metrics=metrics)
-                models[model_name] = model
-        return models
-
+# Class to extract metrics from input files
 class MetricsExtractor:
-    def __init__(self, file_paths):
-        self.file_paths = file_paths
+    def __init__(self, file_inputs):
+        self.file_inputs = file_inputs  # list of (file_path, file_type)
 
     def extract(self):
         results = []
-        for file_path in self.file_paths:
-            parser = self.get_parser(file_path)
+        for file_path, file_type in self.file_inputs:
+            parser = self.get_parser(file_path, file_type)
             if parser:
-                models = parser.parse()
-                results.append(models)
+                try:
+                    models = parser.parse()
+                    results.append(models)
+                except Exception as e:
+                    print(f"Error parsing {file_path}: {str(e)}")
             else:
-                print(f"Unsupported file type for {file_path}")
+                print(f"Unsupported file type: {file_type} for {file_path}")
         return results
 
-    def get_parser(self, file_path):
-        ext = os.path.splitext(file_path)[1].lower()
-        if ext == '.html':
+    def get_parser(self, file_path, file_type):
+        if file_type == 'html':
             return HTMLParser(file_path)
-        elif ext == '.json':
+        elif file_type == 'json':
             return JSONParser(file_path)
-        elif ext == '.csv':
-            return CSVParser(file_path)
         else:
             return None
 
+# Main execution block
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Extract model metrics from files")
-    parser.add_argument('file_paths', nargs='+', help="Paths to the input files (HTML, JSON, CSV)")
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Generate SVG figure from model metrics")
+    parser.add_argument('--input_json', type=str, help="Path to input JSON file")
+    parser.add_argument('--input_html', type=str, help="Path to input HTML file")
+    parser.add_argument('--output_svg', type=str, required=True, help="Path to output SVG file")
     args = parser.parse_args()
 
-    extractor = MetricsExtractor(args.file_paths)
-    results = extractor.extract()
+    # Collect input files
+    file_inputs = []
+    if args.input_json:
+        file_inputs.append((args.input_json, 'json'))
+    if args.input_html:
+        file_inputs.append((args.input_html, 'html'))
 
-    for i, models in enumerate(results):
-        print(f"File {i+1}:")
-        for model_name, model in models.items():
-            print(f"  Model: {model_name}")
-            print(f"    Metrics: {model.metrics}")
-            if model.hyperparameters:
-                print(f"    Hyperparameters: {model.hyperparameters}")
-            if model.test_set_results:
-                print(f"    Test Set Results: {model.test_set_results}")
+    # Check if any input files are provided
+    if not file_inputs:
+        print("No input files provided.")
+        exit(1)
+
+    # Extract models from input files
+    extractor = MetricsExtractor(file_inputs)
+    all_models_dicts = extractor.extract()
+    all_models = {}
+    for models_dict in all_models_dicts:
+        all_models.update(models_dict)
+
+    # Check if any models were found
+    if not all_models:
+        print("No models found in the input files.")
+        exit(1)
+
+    # Collect all unique metric names
+    all_metric_names = set()
+    for model in all_models.values():
+        all_metric_names.update(model.metrics.keys())
+    all_metric_names = sorted(list(all_metric_names))
+
+    # Create table data
+    table_data = []
+    for model_name, model in all_models.items():
+        row = [model_name]
+        for metric in all_metric_names:
+            value = model.metrics.get(metric, 'N/A')
+            row.append(str(value))  # Convert to string for table
+        table_data.append(row)
+
+    # Add header
+    header = ['Model Name'] + all_metric_names
+    table_data.insert(0, header)
+
+    # Create figure and table
+    fig, ax = plt.subplots(figsize=(12, max(4, 0.5 * len(all_models))))
+    ax.axis('tight')
+    ax.axis('off')
+    the_table = table.table(ax, cellText=table_data, loc='center', cellLoc='center', edges='closed')
+
+    # Save as SVG
+    fig.savefig(args.output_svg, format='svg', bbox_inches='tight')
+    plt.close(fig)
