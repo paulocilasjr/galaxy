@@ -1,10 +1,6 @@
 import pandas as pd
 from autogluon.multimodal import MultiModalPredictor
 import argparse
-from sklearn.metrics import (
-    accuracy_score, log_loss, precision_score, recall_score, f1_score, roc_auc_score,
-    mean_squared_error, mean_absolute_error, r2_score
-)
 
 
 def main():

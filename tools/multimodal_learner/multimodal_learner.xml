@@ -1,11 +1,12 @@
 <tool id="multimodal_learner" name="MultiModal Learner">
     <requirements>
         <container type="docker">autogluon:latest</container>
+        <requirement type="package">unzip</requirement>
     </requirements>
 
     <command><![CDATA[
         #if $raw_data
-            unzip -o -q '$raw_data' -d ./
+            unzip -o -q '$raw_data' -d ./;
         #end if
         python '$__tool_directory__/multimodal_learner.py'
             --input_csv_train '$input_csv_train'
