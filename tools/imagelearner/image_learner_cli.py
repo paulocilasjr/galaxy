@@ -248,19 +248,26 @@ def get_metrics_help_modal() -> str:
 """
     modal_js = """
 <script>
-var modal = document.getElementById("metricsHelpModal");
-var span = document.getElementsByClassName("close")[0];
-span.onclick = function() {
-  modal.style.display = "none";
-}
-window.onclick = function(event) {
-  if (event.target == modal) {
-    modal.style.display = "none";
+document.addEventListener("DOMContentLoaded", function() {
+  var modal = document.getElementById("metricsHelpModal");
+  var openBtn = document.getElementById("openMetricsHelp");
+  var span = document.getElementsByClassName("close")[0];
+  if (openBtn && modal) {
+    openBtn.onclick = function() {
+      modal.style.display = "block";
+    };
   }
-}
-function openMetricsHelp() {
-  modal.style.display = "block";
-}
+  if (span && modal) {
+    span.onclick = function() {
+      modal.style.display = "none";
+    };
+  }
+  window.onclick = function(event) {
+    if (event.target == modal) {
+      modal.style.display = "none";
+    }
+  }
+});
 </script>
 """
     return modal_css + modal_html + modal_js
@@ -1223,7 +1230,30 @@ class LudwigDirectBackend:
             section_html += "</div>"
             return section_html
 
-        button_html = '<button onclick="openMetricsHelp()">Model Evaluation Metrics — Help Guide</button><br><br>'
+        button_html = '''
+        <button class="help-modal-btn" id="openMetricsHelp">Model Evaluation Metrics — Help Guide</button>
+        <br><br>
+        <style>
+        .help-modal-btn {
+            background-color: #17623b;
+            color: #fff;
+            border: none;
+            border-radius: 24px;
+            padding: 10px 28px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            letter-spacing: 0.03em;
+            cursor: pointer;
+            transition: background 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(23,98,59,0.07);
+        }
+        .help-modal-btn:hover, .help-modal-btn:focus {
+            background-color: #21895e;
+            outline: none;
+            box-shadow: 0 4px 16px rgba(23,98,59,0.14);
+        }
+        </style>
+        '''
         tab1_content = button_html + config_html + metrics_html
         tab2_content = (
             button_html

@@ -7,6 +7,7 @@ import h5py
 import joblib
 import numpy as np
 import pandas as pd
+from feature_help_modal import get_feature_metrics_help_modal
 from feature_importance import FeatureImportanceAnalyzer
 from sklearn.metrics import average_precision_score
 from utils import get_html_closing, get_html_template
@@ -213,6 +214,9 @@ class BaseModelTrainer:
         if not self.output_dir:
             raise ValueError("output_dir must be specified and not None")
 
+        # Imports for the new modal (ensure the function is available)
+        from feature_help_modal import get_feature_metrics_help_modal
+
         model_name = type(self.best_model).__name__
         excluded_params = ['html', 'log_experiment', 'system_log', 'test_data']
         filtered_setup_params = {
@@ -273,9 +277,37 @@ class BaseModelTrainer:
         )
         feature_importance_html = analyzer.run()
 
+        # --- Feature Metrics Help Button ---
+        feature_metrics_button_html = '''
+    <button class="help-modal-btn" id="openFeatureMetricsHelp" style="margin-bottom:12px;">
+    Help: Metrics Guide
+    </button>
+    <style>
+    .help-modal-btn {
+        background-color: #17623b;
+        color: #fff;
+        border: none;
+        border-radius: 24px;
+        padding: 10px 28px;
+        font-size: 1.1rem;
+        font-weight: bold;
+        letter-spacing: 0.03em;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s;
+        box-shadow: 0 2px 8px rgba(23,98,59,0.07);
+    }
+    .help-modal-btn:hover, .help-modal-btn:focus {
+        background-color: #21895e;
+        outline: none;
+        box-shadow: 0 4px 16px rgba(23,98,59,0.14);
+    }
+    </style>
+    '''
+
         html_content = f"""
         {get_html_template()}
             <h1>Tabular Learner Model Report</h1>
+            {feature_metrics_button_html}
             <div class="tabs">
                 <div class="tab" onclick="openTab(event, 'summary')">
                 Validation Result Summary & Config</div>
@@ -388,6 +420,8 @@ class BaseModelTrainer:
         }
         </script>
         """
+        # --- Add the Feature Metrics Help Modal ---
+        html_content += get_feature_metrics_help_modal()
         html_content += f"""
         {get_html_closing()}
         """
@@ -397,11 +431,14 @@ class BaseModelTrainer:
         ) as file:
             file.write(html_content)
 
+
     def save_dashboard(self):
         raise NotImplementedError("Subclasses should implement this method")
 
+
     def generate_plots_explainer(self):
         raise NotImplementedError("Subclasses should implement this method")
+
 
     # not working now
     def generate_tree_plots(self):
