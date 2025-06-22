@@ -177,16 +177,16 @@
   <section id="tiling" name="Tiling images">
     <tool file="tiling/tiling_pyhist.xml" />
   </section>
-  <section id="image_learner" name="Image Learner">
-    <tool file="image_learner/image_learner.xml" />
-  </section>
-  <section id="tabular_learner" name="Tabular Learner">
-    <tool file="tabular_learner/tabular_learner.xml" />
-  </section>
   <section id="multimodar_learner" name="Multimodal Learner">
     <tool file="multimodal_learner/multimodal_learner.xml" />
   </section>
   <section id="combined_reporter" name="Combined Reporter">
     <tool file="combined_reporter/combined_reporter.xml" />
+  </section>
+  <section id="image_learner" name="Image Learner">
+    <tool file="imagelearner/image_learner.xml" />
+  </section>
+   <section id="tabular_learner" name="Tabular Learner">
+    <tool file="tabularlearner/tabular_learner.xml" />
   </section>
 </toolbox>
