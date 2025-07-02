@@ -110,4 +110,10 @@ METRIC_DISPLAY_NAMES = {
     "average_precision_macro": "Precision-Average-Macro",
     "average_precision_micro": "Precision-Average-Micro",
     "average_precision_samples": "Precision-Average-Samples",
+    "mean_squared_error": "Mean Squared Error",
+    "mean_absolute_error": "Mean Absolute Error",
+    "r2": "R² Score",
+    "root_mean_squared_error": "Root Mean Squared Error",
+    "mean_absolute_percentage_error": "Mean Absolute % Error",
+    "root_mean_squared_percentage_error": "Root Mean Squared % Error",
 }

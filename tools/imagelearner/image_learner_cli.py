@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Tuple
 
 import pandas as pd
+import pandas.api.types as ptypes
 import yaml
 from ludwig.globals import (
     DESCRIPTION_FILE_NAME,
@@ -47,6 +48,7 @@ def format_config_table_html(
     training_progress: dict = None,
 ) -> str:
     display_keys = [
+        "task_type",
         "model_name",
         "epochs",
         "batch_size",
@@ -61,6 +63,8 @@ def format_config_table_html(
 
     for key in display_keys:
         val = config.get(key, "N/A")
+        if key == "task_type":
+            val = val.title() if isinstance(val, str) else val
         if key == "batch_size":
             if val is not None:
                 val = int(val)
@@ -122,6 +126,18 @@ def format_config_table_html(
             f"</tr>"
         )
 
+    aug_cfg = config.get("augmentation")
+    if aug_cfg:
+        types = [str(a.get("type", "")) for a in aug_cfg]
+        aug_val = ", ".join(types)
+        rows.append(
+            "<tr>"
+            "<td style='padding: 6px 12px; border: 1px solid #ccc; text-align: left;'>Augmentation</td>"
+            "<td style='padding: 6px 12px; border: 1px solid #ccc; text-align: center;'>"
+            f"{aug_val}</td>"
+            "</tr>"
+        )
+
     if split_info:
         rows.append(
             f"<tr>"
@@ -154,6 +170,8 @@ def format_config_table_html(
 def detect_output_type(test_stats):
     """Detects if the output type is 'binary' or 'category' based on test statistics."""
     label_stats = test_stats.get("label", {})
+    if "mean_squared_error" in label_stats:
+        return "regression"
     per_class = label_stats.get("per_class_stats", {})
     if len(per_class) == 2:
         return "binary"
@@ -164,7 +182,7 @@ def extract_metrics_from_json(
     train_stats: dict,
     test_stats: dict,
     output_type: str,
-) -> dict:
+    ) -> dict:
     """Extracts relevant metrics from training and test statistics based on the output type."""
     metrics = {"training": {}, "validation": {}, "test": {}}
 
@@ -193,6 +211,16 @@ def extract_metrics_from_json(
                 "recall": get_last_value(label_stats, "recall"),
                 "specificity": get_last_value(label_stats, "specificity"),
                 "roc_auc": get_last_value(label_stats, "roc_auc"),
+            }
+        elif output_type == "regression":
+            metrics[split] = {
+                "loss": get_last_value(label_stats, "loss"),
+                "mean_absolute_error": get_last_value(label_stats, "mean_absolute_error"),
+                "mean_absolute_percentage_error": get_last_value(label_stats, "mean_absolute_percentage_error"),
+                "mean_squared_error": get_last_value(label_stats, "mean_squared_error"),
+                "root_mean_squared_error": get_last_value(label_stats, "root_mean_squared_error"),
+                "root_mean_squared_percentage_error": get_last_value(label_stats, "root_mean_squared_percentage_error"),
+                "r2": get_last_value(label_stats, "r2"),
             }
         else:
             metrics[split] = {
@@ -496,24 +524,22 @@ class LudwigDirectBackend:
         batch_size_cfg = batch_size or "auto"
 
         label_column_path = config_params.get("label_column_data_path")
+        label_series = None
         if label_column_path is not None and Path(label_column_path).exists():
             try:
                 label_series = pd.read_csv(label_column_path)[LABEL_COLUMN_NAME]
-                num_unique_labels = label_series.nunique()
             except Exception as e:
                 logger.warning(
-                    f"Could not determine label cardinality, defaulting to 'binary': {e}"
+                    f"Could not read label column for task detection: {e}"
                 )
-                num_unique_labels = 2
+
+        if label_series is not None and ptypes.is_numeric_dtype(label_series.dtype) and label_series.nunique() > 10:
+            task_type = "regression"
         else:
-            logger.warning(
-                "label_column_data_path not provided, defaulting to 'binary'"
-            )
-            num_unique_labels = 2
+            task_type = "classification"
 
-        output_type = "binary" if num_unique_labels == 2 else "category"
+        config_params["task_type"] = task_type
 
-        # Build image feature, injecting augmentation if requested
         image_feat: Dict[str, Any] = {
             "name": IMAGE_PATH_COLUMN_NAME,
             "type": "image",
@@ -522,16 +548,42 @@ class LudwigDirectBackend:
         if config_params.get("augmentation") is not None:
             image_feat["augmentation"] = config_params["augmentation"]
 
+        if task_type == "regression":
+            output_feat = {
+                "name": LABEL_COLUMN_NAME,
+                "type": "number",
+                "decoder": {"type": "regressor"},
+                "loss": {"type": "mean_squared_error"},
+                "evaluation": {
+                    "metrics": [
+                        "mean_squared_error",
+                        "mean_absolute_error",
+                        "r2",
+                    ]
+                },
+            }
+            val_metric = config_params.get("validation_metric", "mean_squared_error")
+
+        else:
+            num_unique_labels = (
+                label_series.nunique() if label_series is not None else 2
+            )
+            output_type = "binary" if num_unique_labels == 2 else "category"
+            output_feat = {"name": LABEL_COLUMN_NAME, "type": output_type}
+            val_metric = None
+
         conf: Dict[str, Any] = {
             "model_type": "ecd",
             "input_features": [image_feat],
-            "output_features": [{"name": LABEL_COLUMN_NAME, "type": output_type}],
+            "output_features": [output_feat],
             "combiner": {"type": "concat"},
             "trainer": {
                 "epochs": epochs,
                 "early_stop": early_stop,
                 "batch_size": batch_size_cfg,
                 "learning_rate": learning_rate,
+                # only set validation_metric for regression
+                **({"validation_metric": val_metric} if val_metric else {}),
             },
             "preprocessing": {
                 "split": split_config,
@@ -761,6 +813,7 @@ class LudwigDirectBackend:
         report_name = title.lower().replace(" ", "_") + "_report.html"
         report_path = cwd / report_name
         output_dir = Path(output_dir)
+        output_type = None
 
         exp_dirs = sorted(
             output_dir.glob("experiment_run*"),
@@ -780,7 +833,6 @@ class LudwigDirectBackend:
         metrics_html = ""
         train_val_metrics_html = ""
         test_metrics_html = ""
-
         try:
             train_stats_path = exp_dir / "training_statistics.json"
             test_stats_path = exp_dir / TEST_STATISTICS_FILE_NAME
@@ -790,23 +842,15 @@ class LudwigDirectBackend:
                 with open(test_stats_path) as f:
                     test_stats = json.load(f)
                 output_type = detect_output_type(test_stats)
-                all_metrics = extract_metrics_from_json(
-                    train_stats,
-                    test_stats,
-                    output_type,
-                )
                 metrics_html = format_stats_table_html(train_stats, test_stats)
                 train_val_metrics_html = format_train_val_stats_table_html(
-                    train_stats,
-                    test_stats,
+                    train_stats, test_stats
                 )
                 test_metrics_html = format_test_merged_stats_table_html(
-                    all_metrics["test"],
+                    extract_metrics_from_json(train_stats, test_stats, output_type)["test"]
                 )
         except Exception as e:
-            logger.warning(
-                f"Could not load stats for HTML report: {type(e).__name__}: {e}"
-            )
+            logger.warning(f"Could not load stats for HTML report: {e}")
 
         config_html = ""
         training_progress = self.get_training_process(output_dir)
@@ -894,46 +938,65 @@ class LudwigDirectBackend:
             section_html += "</div>"
             return section_html
 
-        button_html = """
-        <button class="help-modal-btn" id="openMetricsHelp">Model Evaluation Metrics — Help Guide</button>
-        <br><br>
-        <style>
-        .help-modal-btn {
-            background-color: #17623b;
-            color: #fff;
-            border: none;
-            border-radius: 24px;
-            padding: 10px 28px;
-            font-size: 1.1rem;
-            font-weight: bold;
-            letter-spacing: 0.03em;
-            cursor: pointer;
-            transition: background 0.2s, box-shadow 0.2s;
-            box-shadow: 0 2px 8px rgba(23,98,59,0.07);
-        }
-        .help-modal-btn:hover, .help-modal-btn:focus {
-            background-color: #21895e;
-            outline: none;
-            box-shadow: 0 4px 16px rgba(23,98,59,0.14);
-        }
-        </style>
-        """
-        tab1_content = button_html + config_html + metrics_html
+        tab1_content = config_html + metrics_html
+
         tab2_content = (
-            button_html
-            + train_val_metrics_html
+            train_val_metrics_html
             + render_img_section("Training & Validation Visualizations", train_viz_dir)
         )
+
+        # --- Predictions vs Ground Truth table ---
+        preds_section = ""
+        parquet_path = exp_dir / PREDICTIONS_PARQUET_FILE_NAME
+        if parquet_path.exists():
+            try:
+                # 1) load predictions from Parquet
+                df_preds = pd.read_parquet(parquet_path).reset_index(drop=True)
+                # assume the column containing your model's prediction is named "prediction"
+                # or contains that substring:
+                pred_col = next(
+                    (c for c in df_preds.columns if "prediction" in c.lower()),
+                    None,
+                )
+                if pred_col is None:
+                    raise ValueError("No prediction column found in Parquet output")
+                df_pred = df_preds[[pred_col]].rename(columns={pred_col: "prediction"})
+
+                # 2) load ground truth for the test split from prepared CSV
+                df_all = pd.read_csv(config["label_column_data_path"])
+                df_gt = (
+                    df_all[df_all[SPLIT_COLUMN_NAME] == 2][LABEL_COLUMN_NAME]
+                    .reset_index(drop=True)
+                )
+
+                # 3) concatenate side‐by‐side
+                df_table = pd.concat([df_gt, df_pred], axis=1)
+                df_table.columns = [LABEL_COLUMN_NAME, "prediction"]
+
+                # 4) render as HTML
+                preds_html = df_table.to_html(
+                    index=False, classes="predictions-table"
+                )
+                preds_section = (
+                    "<h2 style='text-align: center;'>Predictions vs. Ground Truth</h2>"
+                    "<div style='overflow-x:auto; margin-bottom:20px;'>"
+                    + preds_html +
+                    "</div>"
+                )
+            except Exception as e:
+                logger.warning(f"Could not build Predictions vs GT table: {e}")
+        # Test tab = Metrics + Preds table + Visualizations
+
         tab3_content = (
-            button_html
-            + test_metrics_html
+            test_metrics_html
+            + preds_section
             + render_img_section("Test Visualizations", test_viz_dir, output_type)
         )
 
+        # assemble the tabs and help modal
         tabbed_html = build_tabbed_html(tab1_content, tab2_content, tab3_content)
         modal_html = get_metrics_help_modal()
-        html += tabbed_html + modal_html
-        html += get_html_closing()
+        html += tabbed_html + modal_html + get_html_closing()
 
         try:
             with open(report_path, "w") as f:
@@ -944,7 +1007,6 @@ class LudwigDirectBackend:
             raise
 
         return report_path
-
 
 class WorkflowOrchestrator:
     """Manages the image-classification workflow."""

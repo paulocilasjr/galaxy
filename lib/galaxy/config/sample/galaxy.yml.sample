@@ -1797,7 +1797,7 @@ galaxy:
   # if you have special tools that require unaltered output.  WARNING:
   # disabling this does make the Galaxy instance susceptible to XSS
   # attacks initiated by your users.
-  #sanitize_all_html: true
+  sanitize_all_html: false
 
   # Datasets created by tools listed in this file are trusted and will
   # not have their HTML sanitized on display.  This can be manually
