@@ -12,6 +12,16 @@ from typing import Any, Dict, Optional, Protocol, Tuple
 import pandas as pd
 import pandas.api.types as ptypes
 import yaml
+from constants import (
+    IMAGE_PATH_COLUMN_NAME,
+    LABEL_COLUMN_NAME,
+    METRIC_DISPLAY_NAMES,
+    MODEL_ENCODER_TEMPLATES,
+    SPLIT_COLUMN_NAME,
+    TEMP_CONFIG_FILENAME,
+    TEMP_CSV_FILENAME,
+    TEMP_DIR_PREFIX
+)
 from ludwig.globals import (
     DESCRIPTION_FILE_NAME,
     PREDICTIONS_PARQUET_FILE_NAME,
@@ -21,23 +31,18 @@ from ludwig.globals import (
 from ludwig.utils.data_utils import get_split_path
 from ludwig.visualize import get_visualizations_registry
 from sklearn.model_selection import train_test_split
-from utils import encode_image_to_base64, get_html_closing, get_html_template, get_metrics_help_modal, build_tabbed_html
-from constants import (
-    SPLIT_COLUMN_NAME,
-    LABEL_COLUMN_NAME,
-    IMAGE_PATH_COLUMN_NAME,
-    DEFAULT_SPLIT_PROBABILITIES,
-    TEMP_CSV_FILENAME,
-    TEMP_CONFIG_FILENAME,
-    TEMP_DIR_PREFIX,
-    MODEL_ENCODER_TEMPLATES,
-    METRIC_DISPLAY_NAMES,
+from utils import (
+    build_tabbed_html,
+    encode_image_to_base64,
+    get_html_closing,
+    get_html_template,
+    get_metrics_help_modal
 )
 
 # --- Logging Setup ---
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    format='%(asctime)s %(levelname)s %(name)s: %(message)s',
 )
 logger = logging.getLogger("ImageLearner")
 
@@ -182,7 +187,7 @@ def extract_metrics_from_json(
     train_stats: dict,
     test_stats: dict,
     output_type: str,
-    ) -> dict:
+) -> dict:
     """Extracts relevant metrics from training and test statistics based on the output type."""
     metrics = {"training": {}, "validation": {}, "test": {}}
 
@@ -215,11 +220,19 @@ def extract_metrics_from_json(
         elif output_type == "regression":
             metrics[split] = {
                 "loss": get_last_value(label_stats, "loss"),
-                "mean_absolute_error": get_last_value(label_stats, "mean_absolute_error"),
-                "mean_absolute_percentage_error": get_last_value(label_stats, "mean_absolute_percentage_error"),
+                "mean_absolute_error": get_last_value(
+                    label_stats, "mean_absolute_error"
+                ),
+                "mean_absolute_percentage_error": get_last_value(
+                    label_stats, "mean_absolute_percentage_error"
+                ),
                 "mean_squared_error": get_last_value(label_stats, "mean_squared_error"),
-                "root_mean_squared_error": get_last_value(label_stats, "root_mean_squared_error"),
-                "root_mean_squared_percentage_error": get_last_value(label_stats, "root_mean_squared_percentage_error"),
+                "root_mean_squared_error": get_last_value(
+                    label_stats, "root_mean_squared_error"
+                ),
+                "root_mean_squared_percentage_error": get_last_value(
+                    label_stats, "root_mean_squared_percentage_error"
+                ),
                 "r2": get_last_value(label_stats, "r2"),
             }
         else:
@@ -367,7 +380,9 @@ def format_train_val_stats_table_html(train_stats: dict, test_stats: dict) -> st
     return html
 
 
-def format_test_merged_stats_table_html(test_metrics: Dict[str, Optional[float]]) -> str:
+def format_test_merged_stats_table_html(
+    test_metrics: Dict[str, Optional[float]],
+) -> str:
     """Formats an HTML table for test metrics."""
     rows = []
     for key in sorted(test_metrics.keys()):
@@ -472,10 +487,7 @@ class Backend(Protocol):
     ) -> None:
         ...
 
-    def generate_plots(
-        self,
-        output_dir: Path
-    ) -> None:
+    def generate_plots(self, output_dir: Path) -> None:
         ...
 
     def generate_html_report(
@@ -529,11 +541,13 @@ class LudwigDirectBackend:
             try:
                 label_series = pd.read_csv(label_column_path)[LABEL_COLUMN_NAME]
             except Exception as e:
-                logger.warning(
-                    f"Could not read label column for task detection: {e}"
-                )
+                logger.warning(f"Could not read label column for task detection: {e}")
 
-        if label_series is not None and ptypes.is_numeric_dtype(label_series.dtype) and label_series.nunique() > 10:
+        if (
+            label_series is not None
+            and ptypes.is_numeric_dtype(label_series.dtype)
+            and label_series.nunique() > 10
+        ):
             task_type = "regression"
         else:
             task_type = "classification"
@@ -847,19 +861,27 @@ class LudwigDirectBackend:
                     train_stats, test_stats
                 )
                 test_metrics_html = format_test_merged_stats_table_html(
-                    extract_metrics_from_json(train_stats, test_stats, output_type)["test"]
+                    extract_metrics_from_json(train_stats, test_stats, output_type)[
+                        "test"
+                    ]
                 )
         except Exception as e:
-            logger.warning(f"Could not load stats for HTML report: {e}")
+            logger.warning(
+                f"Could not load stats for HTML report: {type(e).__name__}: {e}"
+            )
 
         config_html = ""
         training_progress = self.get_training_process(output_dir)
         try:
-            config_html = format_config_table_html(config, split_info, training_progress)
+            config_html = format_config_table_html(
+                config, split_info, training_progress
+            )
         except Exception as e:
             logger.warning(f"Could not load config for HTML report: {e}")
 
-        def render_img_section(title: str, dir_path: Path, output_type: str = None) -> str:
+        def render_img_section(
+            title: str, dir_path: Path, output_type: str = None
+        ) -> str:
             if not dir_path.exists():
                 return f"<h2>{title}</h2><p><em>Directory not found.</em></p>"
 
@@ -906,11 +928,7 @@ class LudwigDirectBackend:
                     img_names[fname] for fname in display_order if fname in img_names
                 ]
                 remaining = sorted(
-                    [
-                        img
-                        for img in img_names.values()
-                        if img.name not in display_order
-                    ]
+                    [img for img in img_names.values() if img.name not in display_order]
                 )
                 imgs = ordered_imgs + remaining
 
@@ -940,15 +958,14 @@ class LudwigDirectBackend:
 
         tab1_content = config_html + metrics_html
 
-        tab2_content = (
-            train_val_metrics_html
-            + render_img_section("Training & Validation Visualizations", train_viz_dir)
+        tab2_content = train_val_metrics_html + render_img_section(
+            "Training & Validation Visualizations", train_viz_dir
         )
 
         # --- Predictions vs Ground Truth table ---
         preds_section = ""
         parquet_path = exp_dir / PREDICTIONS_PARQUET_FILE_NAME
-        if parquet_path.exists():
+        if output_type == "regression" and parquet_path.exists():
             try:
                 # 1) load predictions from Parquet
                 df_preds = pd.read_parquet(parquet_path).reset_index(drop=True)
@@ -964,24 +981,21 @@ class LudwigDirectBackend:
 
                 # 2) load ground truth for the test split from prepared CSV
                 df_all = pd.read_csv(config["label_column_data_path"])
-                df_gt = (
-                    df_all[df_all[SPLIT_COLUMN_NAME] == 2][LABEL_COLUMN_NAME]
-                    .reset_index(drop=True)
-                )
+                df_gt = df_all[df_all[SPLIT_COLUMN_NAME] == 2][
+                    LABEL_COLUMN_NAME
+                ].reset_index(drop=True)
 
                 # 3) concatenate side‐by‐side
                 df_table = pd.concat([df_gt, df_pred], axis=1)
                 df_table.columns = [LABEL_COLUMN_NAME, "prediction"]
 
                 # 4) render as HTML
-                preds_html = df_table.to_html(
-                    index=False, classes="predictions-table"
-                )
+                preds_html = df_table.to_html(index=False, classes="predictions-table")
                 preds_section = (
-                    "<h2 style='text-align: center;'>Predictions vs. Ground Truth</h2>"
-                    "<div style='overflow-x:auto; margin-bottom:20px;'>"
-                    + preds_html +
-                    "</div>"
+                    "<h2 style='text-align: center;'>Ground Truth vs. Predictions</h2>"
+                        "<div style='overflow-y:auto; max-height:400px; overflow-x:auto; margin-bottom:20px;'>"
+                    + preds_html
+                    + "</div>"
                 )
             except Exception as e:
                 logger.warning(f"Could not build Predictions vs GT table: {e}")
@@ -1007,6 +1021,7 @@ class LudwigDirectBackend:
             raise
 
         return report_path
+
 
 class WorkflowOrchestrator:
     """Manages the image-classification workflow."""
@@ -1096,7 +1111,9 @@ class WorkflowOrchestrator:
 
         return final_csv, split_config, split_info
 
-    def _process_fixed_split(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any], str]:
+    def _process_fixed_split(
+        self, df: pd.DataFrame
+    ) -> Tuple[pd.DataFrame, Dict[str, Any], str]:
         """Process a fixed split column (0=train,1=val,2=test)."""
         logger.info(f"Fixed split column '{SPLIT_COLUMN_NAME}' detected.")
         try:
@@ -1215,10 +1232,10 @@ def aug_parse(aug_string: str):
     mapping = {
         "random_horizontal_flip": {"type": "random_horizontal_flip"},
         "random_vertical_flip": {"type": "random_vertical_flip"},
-        "random_rotate": {"type": "random_rotate",  "degree": 10},
-        "random_blur": {"type": "random_blur",    "kernel_size": 3},
+        "random_rotate": {"type": "random_rotate", "degree": 10},
+        "random_blur": {"type": "random_blur", "kernel_size": 3},
         "random_brightness": {"type": "random_brightness", "min": 0.5, "max": 2.0},
-        "random_contrast": {"type": "random_contrast",   "min": 0.5, "max": 2.0},
+        "random_contrast": {"type": "random_contrast", "min": 0.5, "max": 2.0},
     }
     aug_list = []
     for tok in aug_string.split(","):
