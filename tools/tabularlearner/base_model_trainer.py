@@ -11,7 +11,14 @@ import pandas as pd
 from feature_help_modal import get_feature_metrics_help_modal
 from feature_importance import FeatureImportanceAnalyzer
 from sklearn.metrics import average_precision_score
-from utils import get_html_template, build_tabbed_html, get_html_closing, encode_image_to_base64
+from utils import (
+    get_html_template,
+    build_tabbed_html,
+    get_html_closing,
+    encode_image_to_base64,
+    add_plot_to_html,
+    add_hr_to_html
+)
 
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
@@ -176,6 +183,8 @@ class BaseModelTrainer:
             return base64.b64encode(img_file.read()).decode("utf-8")
 
     def save_html_report(self):
+        from utils import add_plot_to_html, add_hr_to_html
+
         LOG.info("Saving HTML report")
 
         # 1) Determine best model name
@@ -185,150 +194,160 @@ class BaseModelTrainer:
             best_model_name = type(self.best_model).__name__
         LOG.info(f"Best model determined as: {best_model_name}")
 
-        # 2) Compute number of training samples
+        # 2) Compute training sample count
         try:
             n_train = self.exp.X_train.shape[0]
         except Exception:
             n_train = getattr(self.exp, "X_train_transformed", pd.DataFrame()).shape[0]
-
-        # 3) Build setup‐params table
-        all_params = self.setup_params  # includes PyCaret defaults + user_kwargs
-        display_keys = [
-            "Target",
-            "Session ID",
-            "Train Size",
-            "Normalize",
-            "Feature Selection",
-            "Cross Validation",
-            "Cross Validation Folds",
-            "Remove Outliers",
-            "Remove Multicollinearity",
-            "Polynomial Features",
-            "Fix Imbalance",
-            "Models",
-        ]
-        setup_rows = []
         total_rows = self.data.shape[0]
 
+        # 3) Build setup parameters table
+        all_params = self.setup_params
+        display_keys = [
+            "Target","Session ID","Train Size","Normalize","Feature Selection",
+            "Cross Validation","Cross Validation Folds","Remove Outliers",
+            "Remove Multicollinearity","Polynomial Features","Fix Imbalance","Models",
+        ]
+        setup_rows = []
         for key in display_keys:
-            param_key = key.lower().replace(" ", "_")
-            val = all_params.get(param_key)
-
+            pk = key.lower().replace(" ", "_")
+            v = all_params.get(pk)
             if key == "Train Size":
-                # if user passed a fraction, use that; otherwise compute it
-                if val is not None:
-                    frac = float(val)
-                else:
-                    frac = n_train / total_rows if total_rows else 0
-                display_val = f"{frac:.2f} ({n_train} rows)"
+                frac = float(v) if v is not None else (n_train/total_rows if total_rows else 0)
+                dv = f"{frac:.2f} ({n_train} rows)"
             elif key in {
-                "Normalize",
-                "Feature Selection",
-                "Cross Validation",
-                "Remove Outliers",
-                "Remove Multicollinearity",
-                "Polynomial Features",
-                "Fix Imbalance",
+                "Normalize","Feature Selection","Cross Validation",
+                "Remove Outliers","Remove Multicollinearity",
+                "Polynomial Features","Fix Imbalance"
             }:
-                display_val = bool(val)
+                dv = bool(v)
             elif key == "Cross Validation Folds":
-                display_val = val if val is not None else "None"
+                dv = v if v is not None else "None"
             elif key == "Models":
-                if isinstance(val, (list, tuple)):
-                    display_val = ", ".join(map(str, val))
-                else:
-                    display_val = "None"
+                dv = ", ".join(map(str, v)) if isinstance(v, (list, tuple)) else "None"
             else:
-                display_val = val if val is not None else "None"
-
-            setup_rows.append([key, display_val])
-
-        # Optionally append the CV fold metric
+                dv = v if v is not None else "None"
+            setup_rows.append([key, dv])
         if hasattr(self.exp, "_fold_metric"):
             setup_rows.append(["best_model_metric", self.exp._fold_metric])
 
         df_setup = pd.DataFrame(setup_rows, columns=["Parameter", "Value"])
-        df_setup.to_csv(Path(self.output_dir) / "setup_params.csv", index=False)
+        df_setup.to_csv(Path(self.output_dir)/"setup_params.csv", index=False)
 
-        # 4) Persist comparison & test results
-        self.results.to_csv(Path(self.output_dir) / "comparison_results.csv", index=False)
-        self.test_result_df.to_csv(Path(self.output_dir) / "test_results.csv", index=False)
+        # 4) Persist CSVs
+        self.results.to_csv(Path(self.output_dir)/"comparison_results.csv", index=False)
+        self.test_result_df.to_csv(Path(self.output_dir)/"test_results.csv", index=False)
+        pd.DataFrame(self.best_model.get_params().items(),
+                     columns=["Parameter","Value"])\
+          .to_csv(Path(self.output_dir)/"best_model.csv", index=False)
 
-        # 5) Persist best‐model parameters
-        df_model = pd.DataFrame(
-            self.best_model.get_params().items(),
-            columns=["Parameter", "Value"]
-        )
-        df_model.to_csv(Path(self.output_dir) / "best_model.csv", index=False)
-
-        # 6) Build HTML tabs
+        # 5) Header
         header = f"<h2>Best Model: {best_model_name}</h2>"
 
+        # — Validation Summary & Configuration —
+        val_df = self.results.copy()
+        val_df.drop(columns=["TT (Ec)", "TT (Sec)"], errors="ignore", inplace=True)
         summary_html = (
             header
-            + "<h3>Validation Result Metrics</h3>"
-            + '<div class="table-wrapper">'
-            + self.results.to_html(index=False, classes="table sortable")
-            + '</div>'
+            + "<h3>Validation Summary & Configuration</h3>"
+            + '<div class="table-wrapper">' +
+                val_df.to_html(index=False, classes="table sortable") +
+              '</div>'
             + "<h3>Setup Parameters</h3>"
-            + '<div class="table-wrapper">'
-            + df_setup.to_html(index=False, classes="table sortable")
-            + '</div>'
+            + '<div class="table-wrapper">' +
+                df_setup.to_html(index=False, classes="table sortable") +
+              '</div>'
         )
-
-        test_html = (
-            header
-            + "<h3>Test Metrics</h3>"
-            + self.test_result_df.to_html(index=False, classes="table sortable")
-            + "<h3>Visualizations</h3>"
-        )
-        for idx, (name, path) in enumerate(self.plots.items(), start=1):
-            b64 = encode_image_to_base64(path)
-            test_html += (
-                '<div class="plot">'
-                f"<h4>{name.replace('_', ' ').title()}</h4>"
-                f'<img src="data:image/png;base64,{b64}" '
-                'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
-                "</div>"
-            )
-            if idx < len(self.plots):
-                test_html += "<hr>"
-
-        feature_html = (
-            header
-            + "<h3>Feature Importance</h3>"
-            + FeatureImportanceAnalyzer(
-                data=self.data,
-                target_col=self.target_col,
-                task_type=self.task_type,
-                output_dir=self.output_dir,
-                exp=self.exp,
-                best_model=self.best_model,
-            ).run()
-        )
-
-        explainer_html = None
-        if self.plots_explainer_html:
-            explainer_html = header + "<h3>Explainer Plots</h3>" + self.plots_explainer_html
-            for i, tree_b64 in enumerate(self.trees, start=1):
-                explainer_html += (
+        # re-inject all your original PyCaret validation plots
+        for name in ["learning","vc","auc","error","class_report","calibration"]:
+            if name in self.plots:
+                summary_html += "<hr>"
+                b64 = encode_image_to_base64(self.plots[name])
+                summary_html += (
                     '<div class="plot">'
-                    f"<h4>Tree {i}</h4>"
-                    f'<img src="data:image/png;base64,{tree_b64}" '
+                    f"<h4>{name.replace('_',' ').title()}</h4>"
+                    f'<img src="data:image/png;base64,{b64}" '
                     'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
                     "</div>"
                 )
 
-        # 7) Assemble and write the HTML report
+        # — Test Summary —
+        test_html = (
+            header
+            + "<h3>Test Summary</h3>"
+            + '<div class="table-wrapper">' +
+                self.test_result_df.to_html(index=False, classes="table sortable") +
+              '</div>'
+            + "<h3>Visualizations</h3>"
+        )
+
+        # 5a) Explainer-substituted plots in order
+        test_order = [
+            "roc_auc",
+            "pr_auc",
+            "lift_curve",
+            "confusion_matrix",
+            "threshold",
+            "cumulative_precision",
+        ]
+        for key in test_order:
+            fig_or_fn = self.explainer_plots.pop(key, None)
+            if fig_or_fn is not None:
+                fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
+                test_html += add_plot_to_html(fig) + add_hr_to_html()
+
+        # 5b) Remaining PyCaret test plots
+        for name, path in self.plots.items():
+            if name in test_order:
+                continue
+            # include only the ones you asked to keep
+            if name in {"threshold","pr","class_report","calibration"}:
+                b64 = encode_image_to_base64(path)
+                test_html += (
+                    '<div class="plot">'
+                    f"<h4>{name.replace('_',' ').title()}</h4>"
+                    f'<img src="data:image/png;base64,{b64}" '
+                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
+                    "</div>" + add_hr_to_html()
+                )
+
+        # — Feature Importance —
+        feature_html = header + "<h3>Feature Importance</h3>"
+
+        # 6a) PyCaret’s default feature importances
+        feature_html += FeatureImportanceAnalyzer(
+            data=self.data,
+            target_col=self.target_col,
+            task_type=self.task_type,
+            output_dir=self.output_dir,
+            exp=self.exp,
+            best_model=self.best_model,
+        ).run()
+
+        # 6b) Explainer SHAP importances
+        for key in ["shap_mean", "shap_perm"]:
+            fig_or_fn = self.explainer_plots.pop(key, None)
+            if fig_or_fn is not None:
+                fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
+                feature_html += add_plot_to_html(fig) + add_hr_to_html()
+
+        # 6c) PDPs last
+        pdp_keys = sorted(k for k in self.explainer_plots if k.startswith("pdp__"))
+        for k in pdp_keys:
+            fig = self.explainer_plots[k]()
+            feature_html += add_plot_to_html(fig) + add_hr_to_html()
+
+        # 7) Assemble final HTML (three tabs)
         html = get_html_template()
         html += "<h1>Tabular Learner Model Report</h1>"
-        html += build_tabbed_html(summary_html, test_html, feature_html, explainer_html)
+        html += build_tabbed_html(summary_html, test_html, feature_html)
         html += get_feature_metrics_help_modal()
         html += get_html_closing()
 
-        report_path = Path(self.output_dir) / "comparison_result.html"
-        report_path.write_text(html, encoding="utf-8")
-        LOG.info(f"HTML report generated at: {report_path}")
+        # 8) Write out
+        (Path(self.output_dir) / "comparison_result.html")\
+            .write_text(html, encoding="utf-8")
+        LOG.info(f"HTML report generated at: {self.output_dir}/comparison_result.html")
 
     def save_dashboard(self):
         raise NotImplementedError("Subclasses should implement this method")

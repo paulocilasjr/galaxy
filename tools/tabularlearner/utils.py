@@ -13,60 +13,131 @@ def get_html_template() -> str:
     return """
     <html>
     <head>
-        <meta charset=\"UTF-8\"> 
+        <meta charset="UTF-8">
         <title>Model Training Report</title>
         <style>
-          body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f4f4f4; }
-          .container { max-width: 800px; margin: auto; background: white; padding: 20px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-          .table-wrapper {overflow-x: auto; margin: 1rem 0;}
-          .table-wrapper table {width:100%; table-layout: auto;}
-          .table-wrapper th,
-          .table-wrapper td {
-            whit-space: nowrap;
-            padding: 8px;
+          body {
+              font-family: Arial, sans-serif;
+              margin: 0;
+              padding: 20px;
+              background-color: #f4f4f4;
           }
-          h1 { text-align: center; color: #333; }
-          h2 { border-bottom: 2px solid #4CAF50; color: #4CAF50; padding-bottom: 5px; }
-          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-          table, th, td { border: 1px solid #ddd; }
-          th, td { padding: 8px; text-align: left; }
-          th { background-color: #4CAF50; color: white; }
-          .plot { text-align: center; margin: 20px 0; }
-          .plot img { max-width: 100%; height: auto; border:1px solid #ddd; }
-          .tabs { display: flex; align-items: center; border-bottom:2px solid #ccc; margin-bottom:1rem; }
-          .tab { padding:10px 20px; cursor:pointer; border:1px solid #ccc; border-bottom:none; background:#f9f9f9; margin-right:5px; border-top-left-radius:8px; border-top-right-radius:8px; }
-          .tab.active { background:white; font-weight:bold; }
-          .tab-content { display:none; padding:20px; border:1px solid #ccc; border-top:none; background:white; }
-          .tab-content.active { display:block; }
-          .help-btn { margin-left:auto; padding:6px 12px; font-size:0.9rem; border:1px solid #4CAF50; border-radius:4px; background:#4CAF50; color:white; cursor:pointer; }
+          .container {
+              max-width: 800px;
+              margin: auto;
+              background: white;
+              padding: 20px;
+              box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+          }
+          h1 {
+              text-align: center;
+              color: #333;
+          }
+          h2 {
+              border-bottom: 2px solid #4CAF50;
+              color: #4CAF50;
+              padding-bottom: 5px;
+          }
+
+          /* revert table styling to full borders */
+          table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 20px 0;
+          }
+          table, th, td {
+              border: 1px solid #ddd;
+          }
+          th, td {
+              padding: 8px;
+              text-align: left;
+          }
+          th {
+              background-color: #4CAF50;
+              color: white;
+          }
+
+          .plot {
+              text-align: center;
+              margin: 20px 0;
+          }
+          .plot img {
+              max-width: 100%;
+              height: auto;
+          }
+
+          .tabs {
+              display: flex;
+              align-items: center;
+              border-bottom: 2px solid #ccc;
+              margin-bottom: 1rem;
+          }
+          .tab {
+              padding: 10px 20px;
+              cursor: pointer;
+              border: 1px solid #ccc;
+              border-bottom: none;
+              background: #f9f9f9;
+              margin-right: 5px;
+              border-top-left-radius: 8px;
+              border-top-right-radius: 8px;
+          }
+          .tab.active {
+              background: white;
+              font-weight: bold;
+          }
+
+          .tab-content {
+              display: none;
+              padding: 20px;
+              border: 1px solid #ccc;
+              border-top: none;
+              background: white;
+          }
+          .tab-content.active {
+              display: block;
+          }
+
+          .help-btn {
+              margin-left: auto;
+              padding: 6px 12px;
+              font-size: 0.9rem;
+              border: 1px solid #4CAF50;
+              border-radius: 4px;
+              background: #4CAF50;
+              color: white;
+              cursor: pointer;
+          }
+
+          /* sortable table header arrows */
           table.sortable th {
-            position: relative;
-            padding-right: 20px; /* room for the arrow */
-            cursor: pointer;
+              position: relative;
+              padding-right: 20px; /* room for the arrow */
+              cursor: pointer;
           }
           table.sortable th::after {
-            content: '↕';        /* up/down arrow */
-            position: absolute;
-            right: 8px;
-            opacity: 0.4;
-            transition: opacity 0.2s;
+              content: '↕';
+              position: absolute;
+              right: 8px;
+              opacity: 0.4;
+              transition: opacity 0.2s;
           }
           table.sortable th:hover::after {
-            opacity: 0.7;
+              opacity: 0.7;
           }
           table.sortable th.sorted-asc::after {
-            content: '↑';        /* ascending */
-            opacity: 1;
+              content: '↑';
+              opacity: 1;
           }
           table.sortable th.sorted-desc::after {
-            content: '↓';        /* descending */
-            opacity: 1;
+              content: '↓';
+              opacity: 1;
           }
         </style>
     </head>
     <body>
-    <div class=\"container\">"""
-
+    <div class="container">
+    """
 
 def get_html_closing() -> str:
     return """
