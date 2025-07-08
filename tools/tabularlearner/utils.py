@@ -22,13 +22,16 @@ def get_html_template() -> str:
               padding: 20px;
               background-color: #f4f4f4;
           }
+          /* allow horizontal scrolling if content overflows */
           .container {
               max-width: 800px;
               margin: auto;
               background: white;
               padding: 20px;
               box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+              overflow-x: auto;
           }
+
           h1 {
               text-align: center;
               color: #333;
@@ -37,6 +40,12 @@ def get_html_template() -> str:
               border-bottom: 2px solid #4CAF50;
               color: #4CAF50;
               padding-bottom: 5px;
+          }
+
+          /* wrapper for tables to allow individual horizontal scroll */
+          .table-wrapper {
+              overflow-x: auto;
+              margin: 1rem 0;
           }
 
           /* revert table styling to full borders */
@@ -138,6 +147,7 @@ def get_html_template() -> str:
     <body>
     <div class="container">
     """
+
 
 def get_html_closing() -> str:
     return """
@@ -255,4 +265,3 @@ def encode_image_to_base64(image_path: str) -> str:
 def predict_proba(self, X):
     pred = self.predict(X)
     return np.vstack((1 - pred, pred)).T
-

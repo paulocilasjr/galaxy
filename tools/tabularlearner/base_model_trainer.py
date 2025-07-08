@@ -183,8 +183,6 @@ class BaseModelTrainer:
             return base64.b64encode(img_file.read()).decode("utf-8")
 
     def save_html_report(self):
-        from utils import add_plot_to_html, add_hr_to_html
-
         LOG.info("Saving HTML report")
 
         # 1) Determine best model name
@@ -259,7 +257,10 @@ class BaseModelTrainer:
               '</div>'
         )
         # re-inject all your original PyCaret validation plots
-        for name in ["learning","vc","auc","error","class_report","calibration"]:
+        for name in [
+            "learning", "vc", "auc", "error", "class_report", "calibration",
+            "dimension", "manifold", "rfe", "threshold"
+        ]:
             if name in self.plots:
                 summary_html += "<hr>"
                 b64 = encode_image_to_base64(self.plots[name])

@@ -52,6 +52,17 @@ class ClassificationModelTrainer(BaseModelTrainer):
                  'feature_all']
         for plot_name in plots:
             try:
+                # threshold with % above/below cutoff
+                if plot_name == 'threshold':
+                    plot_path = self.exp.plot_model(
+                        self.best_model,
+                        plot=plot_name,
+                        save=True,
+                        plot_kwargs={'binary': True, 'percentage': True}
+                    )
+                    self.plots[plot_name] = plot_path
+                    continue
+
                 if plot_name == 'auc' and not self.exp.is_multiclass:
                     plot_path = self.exp.plot_model(self.best_model,
                                                     plot=plot_name,
