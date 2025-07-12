@@ -22,8 +22,8 @@ class PyCaretModelEvaluator:
 
     def load_h5_model(self):
         """Load a PyCaret model from an HDF5 file."""
-        with h5py.File(self.model_path, 'r') as f:
-            model_bytes = bytes(f['model'][()])
+        with h5py.File(self.model_path, "r") as f:
+            model_bytes = bytes(f["model"][()])
             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
                 temp_file.write(model_bytes)
                 temp_file.seek(0)
@@ -39,7 +39,7 @@ class ClassificationEvaluator(PyCaretModelEvaluator):
     def evaluate(self, data_path):
         metrics = None
         plot_paths = {}
-        data = pd.read_csv(data_path, engine='python', sep=None)
+        data = pd.read_csv(data_path, engine="python", sep=None)
         if self.target:
             exp = ClassificationExperiment()
             names = data.columns.to_list()
@@ -47,33 +47,44 @@ class ClassificationEvaluator(PyCaretModelEvaluator):
             target_index = int(self.target) - 1
             target_name = names[target_index]
             exp.setup(data, target=target_name, test_data=data, index=False)
-            exp.add_metric(id='PR-AUC-Weighted',
-                           name='PR-AUC-Weighted',
-                           target='pred_proba',
-                           score_func=average_precision_score,
-                           average='weighted')
+            exp.add_metric(
+                id="PR-AUC-Weighted",
+                name="PR-AUC-Weighted",
+                target="pred_proba",
+                score_func=average_precision_score,
+                average="weighted",
+            )
             predictions = exp.predict_model(self.model)
             metrics = exp.pull()
-            plots = ['confusion_matrix', 'auc', 'threshold', 'pr',
-                     'error', 'class_report', 'learning', 'calibration',
-                     'vc', 'dimension', 'manifold', 'rfe', 'feature',
-                     'feature_all']
+            plots = [
+                "confusion_matrix",
+                "auc",
+                "threshold",
+                "pr",
+                "error",
+                "class_report",
+                "learning",
+                "calibration",
+                "vc",
+                "dimension",
+                "manifold",
+                "rfe",
+                "feature",
+                "feature_all",
+            ]
             for plot_name in plots:
                 try:
-                    if plot_name == 'auc' and not exp.is_multiclass:
-                        plot_path = exp.plot_model(self.model,
-                                                   plot=plot_name,
-                                                   save=True,
-                                                   plot_kwargs={
-                                                       'micro': False,
-                                                       'macro': False,
-                                                       'per_class': False,
-                                                       'binary': True})
+                    if plot_name == "auc" and not exp.is_multiclass:
+                        plot_path = exp.plot_model(
+                            self.model,
+                            plot=plot_name,
+                            save=True,
+                            plot_kwargs={"micro": False, "macro": False, "per_class": False, "binary": True},
+                        )
                         plot_paths[plot_name] = plot_path
                         continue
 
-                    plot_path = exp.plot_model(self.model,
-                                               plot=plot_name, save=True)
+                    plot_path = exp.plot_model(self.model, plot=plot_name, save=True)
                     plot_paths[plot_name] = plot_path
                 except Exception as e:
                     LOG.error(f"Error generating plot {plot_name}: {e}")
@@ -92,7 +103,7 @@ class RegressionEvaluator(PyCaretModelEvaluator):
     def evaluate(self, data_path):
         metrics = None
         plot_paths = {}
-        data = pd.read_csv(data_path, engine='python', sep=None)
+        data = pd.read_csv(data_path, engine="python", sep=None)
         if self.target:
             names = data.columns.to_list()
             target_index = int(self.target) - 1
@@ -101,13 +112,10 @@ class RegressionEvaluator(PyCaretModelEvaluator):
             exp.setup(data, target=target_name, test_data=data, index=False)
             predictions = exp.predict_model(self.model)
             metrics = exp.pull()
-            plots = ['residuals', 'error', 'cooks',
-                     'learning', 'vc', 'manifold',
-                     'rfe', 'feature', 'feature_all']
+            plots = ["residuals", "error", "cooks", "learning", "vc", "manifold", "rfe", "feature", "feature_all"]
             for plot_name in plots:
                 try:
-                    plot_path = exp.plot_model(self.model,
-                                               plot=plot_name, save=True)
+                    plot_path = exp.plot_model(self.model, plot=plot_name, save=True)
                     plot_paths[plot_name] = plot_path
                 except Exception as e:
                     LOG.error(f"Error generating plot {plot_name}: {e}")
@@ -162,32 +170,24 @@ def generate_html_report(plots, metrics):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Evaluate a PyCaret model stored in HDF5 format.")
-    parser.add_argument("--model_path",
-                        type=str,
-                        help="Path to the HDF5 model file.")
-    parser.add_argument("--data_path",
-                        type=str,
-                        help="Path to the evaluation data CSV file.")
-    parser.add_argument("--task",
-                        type=str,
-                        choices=["classification", "regression"],
-                        help="Specify the task: classification or regression.")
-    parser.add_argument("--target",
-                        default=None,
-                        help="Column number of the target")
+    parser = argparse.ArgumentParser(description="Evaluate a PyCaret model stored in HDF5 format.")
+    parser.add_argument("--model_path", type=str, help="Path to the HDF5 model file.")
+    parser.add_argument("--data_path", type=str, help="Path to the evaluation data CSV file.")
+    parser.add_argument(
+        "--task",
+        type=str,
+        choices=["classification", "regression"],
+        help="Specify the task: classification or regression.",
+    )
+    parser.add_argument("--target", default=None, help="Column number of the target")
     args = parser.parse_args()
 
     if args.task == "classification":
-        evaluator = ClassificationEvaluator(
-            args.model_path, args.task, args.target)
+        evaluator = ClassificationEvaluator(args.model_path, args.task, args.target)
     elif args.task == "regression":
-        evaluator = RegressionEvaluator(
-            args.model_path, args.task, args.target)
+        evaluator = RegressionEvaluator(args.model_path, args.task, args.target)
     else:
-        raise ValueError(
-            "Unsupported task type. Use 'classification' or 'regression'.")
+        raise ValueError("Unsupported task type. Use 'classification' or 'regression'.")
 
     predictions, metrics, plots = evaluator.evaluate(args.data_path)
 

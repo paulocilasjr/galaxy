@@ -9,44 +9,44 @@ def get_feature_metrics_help_modal() -> str:
       <!-- Classification Metrics -->
       <h3>1) Classification Metrics</h3>
 
-      <p><strong>Accuracy:</strong>  
+      <p><strong>Accuracy:</strong>
       The proportion of correct predictions over all predictions:<br>
-      <code>(TP + TN) / (TP + TN + FP + FN)</code>.  
+      <code>(TP + TN) / (TP + TN + FP + FN)</code>.
       <em>Use when</em> classes are balanced and you want a single easy‐to‐interpret number.</p>
 
-      <p><strong>Precision:</strong>  
+      <p><strong>Precision:</strong>
       The fraction of positive predictions that are actually positive:<br>
-      <code>TP / (TP + FP)</code>.  
+      <code>TP / (TP + FP)</code>.
       <em>Use when</em> false positives are costly (e.g. spam filter—better to miss some spam than flag good mail).</p>
 
-      <p><strong>Recall (Sensitivity):</strong>  
+      <p><strong>Recall (Sensitivity):</strong>
       The fraction of actual positives correctly identified:<br>
-      <code>TP / (TP + FN)</code>.  
+      <code>TP / (TP + FN)</code>
       <em>Use when</em> false negatives are costly (e.g. disease screening—don’t miss sick patients).</p>
 
-      <p><strong>F1 Score:</strong>  
+      <p><strong>F1 Score:</strong>
       The harmonic mean of Precision and Recall:<br>
-      <code>2·(Precision·Recall)/(Precision+Recall)</code>.  
+      <code>2·(Precision·Recall)/(Precision+Recall)</code>
       <em>Use when</em> you need a balance between Precision & Recall on an imbalanced dataset.</p>
 
-      <p><strong>ROC-AUC (Area Under ROC Curve):</strong>  
-      Measures ability to distinguish classes across all thresholds.  
-      Ranges from 0.5 (random) to 1 (perfect).  
+      <p><strong>ROC-AUC (Area Under ROC Curve):</strong>
+      Measures ability to distinguish classes across all thresholds.
+      Ranges from 0.5 (random) to 1 (perfect).
       <em>Use when</em> you care about ranking positives above negatives.</p>
 
-      <p><strong>PR-AUC (Area Under Precision-Recall Curve):</strong>  
-      Summarizes Precision vs. Recall trade-off.  
-      More informative than ROC-AUC when positives are rare.  
+      <p><strong>PR-AUC (Area Under Precision-Recall Curve):</strong>
+      Summarizes Precision vs. Recall trade-off.
+      More informative than ROC-AUC when positives are rare.
       <em>Use when</em> dealing with highly imbalanced data.</p>
 
-      <p><strong>Log Loss:</strong>  
-      Penalizes confident wrong predictions via negative log-likelihood.  
-      Lower is better.  
+      <p><strong>Log Loss:</strong>
+      Penalizes confident wrong predictions via negative log-likelihood.
+      Lower is better.
       <em>Use when</em> you need well-calibrated probability estimates.</p>
 
-      <p><strong>Cohen’s Kappa:</strong>  
-      Measures agreement between predictions and true labels accounting for chance.  
-      1 is perfect, 0 is random.  
+      <p><strong>Cohen’s Kappa:</strong>
+      Measures agreement between predictions and true labels accounting for chance.
+      1 is perfect, 0 is random.
       <em>Use when</em> you want to factor out chance agreement.</p>
 
       <hr>
@@ -54,35 +54,35 @@ def get_feature_metrics_help_modal() -> str:
       <!-- Regression Metrics -->
       <h3>2) Regression Metrics</h3>
 
-      <p><strong>R² (Coefficient of Determination):</strong>  
+      <p><strong>R² (Coefficient of Determination):</strong>
       Proportion of variance in the target explained by features:<br>
-      1 is perfect, 0 means no better than predicting the mean, negative is worse than mean.  
+      1 is perfect, 0 means no better than predicting the mean, negative is worse than mean.
       <em>Use when</em> you want a normalized measure of fit.</p>
 
-      <p><strong>MAE (Mean Absolute Error):</strong>  
+      <p><strong>MAE (Mean Absolute Error):</strong>
       Average absolute difference between predictions and actual values:<br>
-      <code>mean(|y_pred − y_true|)</code>.  
+      <code>mean(|y_pred − y_true|)</code>
       <em>Use when</em> you need an interpretable “average” error and want to downweight outliers.</p>
 
-      <p><strong>RMSE (Root Mean Squared Error):</strong>  
+      <p><strong>RMSE (Root Mean Squared Error):</strong>
       Square root of the average squared errors:<br>
-      <code>√mean((y_pred − y_true)²)</code>.  
-      Penalizes large errors more heavily.  
+      <code>√mean((y_pred − y_true)²)</code>.
+      Penalizes large errors more heavily.
       <em>Use when</em> large deviations are especially undesirable.</p>
 
-      <p><strong>MSE (Mean Squared Error):</strong>  
+      <p><strong>MSE (Mean Squared Error):</strong>
       The average squared error:<br>
-      <code>mean((y_pred − y_true)²)</code>.  
+      <code>mean((y_pred − y_true)²)</code>.
       Similar to RMSE but in squared units; often used in optimization.</p>
 
-      <p><strong>RMSLE (Root Mean Squared Log Error):</strong>  
-      <code>√mean((log(1+y_pred) − log(1+y_true))²)</code>.  
-      Less sensitive to large differences when both true and predicted are large.  
+      <p><strong>RMSLE (Root Mean Squared Log Error):</strong>
+      <code>√mean((log(1+y_pred) − log(1+y_true))²)</code>.
+      Less sensitive to large differences when both true and predicted are large.
       <em>Use when</em> target spans several orders of magnitude.</p>
 
-      <p><strong>MAPE (Mean Absolute Percentage Error):</strong>  
-      <code>mean(|(y_true − y_pred)/y_true|)·100</code>.  
-      Expresses error as a percentage.  
+      <p><strong>MAPE (Mean Absolute Percentage Error):</strong>
+      <code>mean(|(y_true − y_pred)/y_true|)·100</code>.
+      Expresses error as a percentage.
       <em>Use when</em> relative error matters—but avoid if y_true≈0.</p>
 
     </div>

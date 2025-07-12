@@ -16,7 +16,7 @@ from utils import (
     get_html_closing,
     encode_image_to_base64,
     add_plot_to_html,
-    add_hr_to_html
+    add_hr_to_html,
 )
 
 logging.basicConfig(level=logging.DEBUG)
@@ -70,9 +70,7 @@ class BaseModelTrainer:
 
         numeric_cols = self.data.select_dtypes(include=["number"]).columns
         non_numeric_cols = self.data.select_dtypes(exclude=["number"]).columns
-        self.data[numeric_cols] = self.data[numeric_cols].apply(
-            pd.to_numeric, errors="coerce"
-        )
+        self.data[numeric_cols] = self.data[numeric_cols].apply(pd.to_numeric, errors="coerce")
         if len(non_numeric_cols) > 0:
             LOG.info(f"Non-numeric columns found: {non_numeric_cols.tolist()}")
 
@@ -211,21 +209,34 @@ class BaseModelTrainer:
         # 3) Build setup parameters table
         all_params = self.setup_params
         display_keys = [
-            "Target","Session ID","Train Size","Normalize","Feature Selection",
-            "Cross Validation","Cross Validation Folds","Remove Outliers",
-            "Remove Multicollinearity","Polynomial Features","Fix Imbalance","Models",
+            "Target",
+            "Session ID",
+            "Train Size",
+            "Normalize",
+            "Feature Selection",
+            "Cross Validation",
+            "Cross Validation Folds",
+            "Remove Outliers",
+            "Remove Multicollinearity",
+            "Polynomial Features",
+            "Fix Imbalance",
+            "Models",
         ]
         setup_rows = []
         for key in display_keys:
             pk = key.lower().replace(" ", "_")
             v = all_params.get(pk)
             if key == "Train Size":
-                frac = float(v) if v is not None else (n_train/total_rows if total_rows else 0)
+                frac = float(v) if v is not None else (n_train / total_rows if total_rows else 0)
                 dv = f"{frac:.2f} ({n_train} rows)"
             elif key in {
-                "Normalize","Feature Selection","Cross Validation",
-                "Remove Outliers","Remove Multicollinearity",
-                "Polynomial Features","Fix Imbalance"
+                "Normalize",
+                "Feature Selection",
+                "Cross Validation",
+                "Remove Outliers",
+                "Remove Multicollinearity",
+                "Polynomial Features",
+                "Fix Imbalance",
             }:
                 dv = bool(v)
             elif key == "Cross Validation Folds":
@@ -239,14 +250,14 @@ class BaseModelTrainer:
             setup_rows.append(["best_model_metric", self.exp._fold_metric])
 
         df_setup = pd.DataFrame(setup_rows, columns=["Parameter", "Value"])
-        df_setup.to_csv(Path(self.output_dir)/"setup_params.csv", index=False)
+        df_setup.to_csv(Path(self.output_dir) / "setup_params.csv", index=False)
 
         # 4) Persist CSVs
-        self.results.to_csv(Path(self.output_dir)/"comparison_results.csv", index=False)
-        self.test_result_df.to_csv(Path(self.output_dir)/"test_results.csv", index=False)
-        pd.DataFrame(self.best_model.get_params().items(),
-                     columns=["Parameter","Value"])\
-          .to_csv(Path(self.output_dir)/"best_model.csv", index=False)
+        self.results.to_csv(Path(self.output_dir) / "comparison_results.csv", index=False)
+        self.test_result_df.to_csv(Path(self.output_dir) / "test_results.csv", index=False)
+        pd.DataFrame(self.best_model.get_params().items(), columns=["Parameter", "Value"]).to_csv(
+            Path(self.output_dir) / "best_model.csv", index=False
+        )
 
         # 5) Header
         header = f"<h2>Best Model: {best_model_name}</h2>"
@@ -255,43 +266,47 @@ class BaseModelTrainer:
         val_df = self.results.copy()
         # mapping raw plot keys to user-friendly titles
         plot_title_map = {
-            "learning":       "Learning Curve",
-            "vc":             "Validation Curve",
-            "calibration":    "Calibration Curve",
-            "dimension":      "Dimensionality Reduction",
-            "manifold":       "Manifold Learning",
-            "rfe":            "Recursive Feature Elimination",
-            "threshold":      "Threshold Plot",
+            "learning": "Learning Curve",
+            "vc": "Validation Curve",
+            "calibration": "Calibration Curve",
+            "dimension": "Dimensionality Reduction",
+            "manifold": "Manifold Learning",
+            "rfe": "Recursive Feature Elimination",
+            "threshold": "Threshold Plot",
             "percentage_above_below": "Percentage Above vs. Below Cutoff",
-            "class_report":   "Classification Report",
-            "pr_auc":         "Precision-Recall AUC",
-            "roc_auc":        "Receiver Operating Characteristic AUC"
+            "class_report": "Classification Report",
+            "pr_auc": "Precision-Recall AUC",
+            "roc_auc": "Receiver Operating Characteristic AUC",
         }
         val_df.drop(columns=["TT (Ec)", "TT (Sec)"], errors="ignore", inplace=True)
         summary_html = (
             header
             + "<h2>Train & Validation Summary</h2>"
             + '<div class="table-wrapper">'
-                + val_df.to_html(index=False, classes="table sortable")
-              + '</div>'
+            + val_df.to_html(index=False, classes="table sortable")
+            + "</div>"
             + "<h2>Setup Parameters</h2>"
             + '<div class="table-wrapper">'
-                + df_setup.to_html(index=False, classes="table sortable")
-              + '</div>'
+            + df_setup.to_html(index=False, classes="table sortable")
+            + "</div>"
             # — Hyperparameters
             + "<h2>Best Model Hyperparameters</h2>"
             + '<div class="table-wrapper">'
-                + pd.DataFrame(
-                    self.best_model.get_params().items(),
-                    columns=["Parameter","Value"]
-                ).to_html(index=False, classes="table sortable")
-              + '</div>'
+            + pd.DataFrame(self.best_model.get_params().items(), columns=["Parameter", "Value"]).to_html(
+                index=False, classes="table sortable"
+            )
+            + "</div>"
         )
         # re-inject all your original PyCaret validation plots
         for name in [
-            "learning", "vc", "calibration",
-            "dimension", "manifold", "rfe",
-            "threshold", "percentage_above_below"
+            "learning",
+            "vc",
+            "calibration",
+            "dimension",
+            "manifold",
+            "rfe",
+            "threshold",
+            "percentage_above_below",
         ]:
             if name in self.plots:
                 summary_html += "<hr>"
@@ -309,8 +324,8 @@ class BaseModelTrainer:
         test_html = (
             header
             + '<div class="table-wrapper">'
-                + self.test_result_df.to_html(index=False, classes="table sortable")
-              + '</div>'
+            + self.test_result_df.to_html(index=False, classes="table sortable")
+            + "</div>"
         )
 
         # 5a) Explainer-substituted plots in order
@@ -327,23 +342,23 @@ class BaseModelTrainer:
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
                 title = plot_title_map.get(key, key.replace("_", " ").title())
-                test_html += f"<h2>{title}</h2>" \
-                          + add_plot_to_html(fig) \
-                          + add_hr_to_html()
+                test_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
         # 5b) Remaining PyCaret test plots
         for name, path in self.plots.items():
             if name in test_order:
                 continue
             # include only the ones you asked to keep
-            if name in {"threshold","pr_auc","class_report"}:
+            if name in {"threshold", "pr_auc", "class_report"}:
                 # add a meaningful title via our map
                 title = plot_title_map.get(name, name.replace("_", " ").title())
                 b64 = encode_image_to_base64(path)
-                test_html += f"<h2>{title}</h2>" \
-                  '<div class="plot">' \
-                    f'<img src="data:image/png;base64,{b64}" ' \
-                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>' \
-                  "</div>" + add_hr_to_html()
+                test_html += (
+                    f"<h2>{title}</h2>"
+                    '<div class="plot">'
+                    f'<img src="data:image/png;base64,{b64}" '
+                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
+                    "</div>" + add_hr_to_html()
+                )
 
         # — Feature Importance —
         feature_html = header
@@ -364,18 +379,14 @@ class BaseModelTrainer:
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
                 title = key.replace("_", " ").title()
-                feature_html += f"<h2>{title}</h2>"  \
-                             + add_plot_to_html(fig) \
-                             + add_hr_to_html()
+                feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
 
         # 6c) PDPs last
         pdp_keys = sorted(k for k in self.explainer_plots if k.startswith("pdp__"))
         for k in pdp_keys:
             fig = self.explainer_plots[k]()
             title = k.replace("pdp__", "PDP ").replace("_", " ").title()
-            feature_html += f"<h2>{title}</h2>" \
-                         + add_plot_to_html(fig) \
-                         + add_hr_to_html()
+            feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
 
         # 7) Assemble final HTML (three tabs)
         html = get_html_template()
@@ -385,8 +396,7 @@ class BaseModelTrainer:
         html += get_html_closing()
 
         # 8) Write out
-        (Path(self.output_dir) / "comparison_result.html")\
-            .write_text(html, encoding="utf-8")
+        (Path(self.output_dir) / "comparison_result.html").write_text(html, encoding="utf-8")
         LOG.info(f"HTML report generated at: {self.output_dir}/comparison_result.html")
 
     def save_dashboard(self):

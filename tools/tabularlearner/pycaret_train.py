@@ -165,9 +165,7 @@ def main():
             **model_kwargs,
         )
     else:
-        LOG.error(
-            "Invalid model type. Please choose 'classification' or 'regression'."
-        )
+        LOG.error("Invalid model type. Please choose 'classification' or 'regression'.")
         return
 
     trainer.run()

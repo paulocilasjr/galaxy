@@ -3,8 +3,6 @@ import logging
 import numpy as np
 from typing import Optional
 
-from feature_help_modal import get_feature_metrics_help_modal
-
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
 
@@ -191,35 +189,32 @@ def get_html_closing() -> str:
 
 
 def build_tabbed_html(
-    summary_html: str,
-    test_html: str,
-    feature_html: str,
-    explainer_html: Optional[str] = None
+    summary_html: str, test_html: str, feature_html: str, explainer_html: Optional[str] = None
 ) -> str:
     """
     Render the tabbed sections and an always-visible Help button.
     """
     # CSS
-    css = get_html_template().split("<body>")[1].rsplit("</style>",1)[0] + "</style>"
+    css = get_html_template().split("<body>")[1].rsplit("</style>", 1)[0] + "</style>"
 
     # Tabs header
     tabs = [
         '<div class="tabs">',
         '<div class="tab active" onclick="showTab(\'summary\')">Validation Summary & Config</div>',
         '<div class="tab" onclick="showTab(\'test\')">Test Summary</div>',
-        '<div class="tab" onclick="showTab(\'feature\')">Feature Importance</div>'
+        '<div class="tab" onclick="showTab(\'feature\')">Feature Importance</div>',
     ]
     if explainer_html:
         tabs.append('<div class="tab" onclick="showTab(\'explainer\')">Explainer Plots</div>')
     tabs.append('<button id="openMetricsHelp" class="help-btn">Help</button>')
-    tabs.append('</div>')
+    tabs.append("</div>")
     tabs_section = "\n".join(tabs)
 
     # Content
     contents = [
         f'<div id="summary" class="tab-content active">{summary_html}</div>',
         f'<div id="test" class="tab-content">{test_html}</div>',
-        f'<div id="feature" class="tab-content">{feature_html}</div>'
+        f'<div id="feature" class="tab-content">{feature_html}</div>',
     ]
     if explainer_html:
         contents.append(f'<div id="explainer" class="tab-content">{explainer_html}</div>')
@@ -242,15 +237,15 @@ function showTab(id) {
 
 def customize_figure_layout(fig, margin_dict=None):
     if margin_dict is None:
-        margin_dict = {'l':40, 'r':40, 't':40, 'b':40}
+        margin_dict = {"l": 40, "r": 40, "t": 40, "b": 40}
     fig.update_layout(margin=margin_dict)
     return fig
 
 
 def add_plot_to_html(fig, include_plotlyjs=True) -> str:
-    custom_margin = {'l':40, 'r':40, 't':60, 'b':60}
+    custom_margin = {"l": 40, "r": 40, "t": 60, "b": 60}
     fig = customize_figure_layout(fig, margin_dict=custom_margin)
-    return fig.to_html(full_html=False, default_height=350, include_plotlyjs='cdn' if include_plotlyjs else False)
+    return fig.to_html(full_html=False, default_height=350, include_plotlyjs="cdn" if include_plotlyjs else False)
 
 
 def add_hr_to_html() -> str:
@@ -258,8 +253,8 @@ def add_hr_to_html() -> str:
 
 
 def encode_image_to_base64(image_path: str) -> str:
-    with open(image_path, 'rb') as img_file:
-        return base64.b64encode(img_file.read()).decode('utf-8')
+    with open(image_path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode("utf-8")
 
 
 def predict_proba(self, X):
