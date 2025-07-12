@@ -1,6 +1,5 @@
 import base64
 import logging
-import os
 import tempfile
 from pathlib import Path
 
@@ -47,6 +46,7 @@ class BaseModelTrainer:
         self.results = None
         self.features_name = None
         self.plots = {}
+        self.explainer_plots = {}
         self.plots_explainer_html = None
         self.trees = []
         self.user_kwargs = kwargs.copy()
@@ -114,18 +114,17 @@ class BaseModelTrainer:
             "train_size",
             "normalize",
             "feature_selection",
-            "cross_validation",
             "remove_outliers",
             "remove_multicollinearity",
             "polynomial_features",
+            "feature_interaction",
+            "feature_ratio",
             "fix_imbalance",
         ]:
             val = getattr(self, attr, None)
             if val is not None:
                 self.setup_params[attr] = val
-        if getattr(self, "cross_validation", None) and getattr(
-            self, "cross_validation_folds", None
-        ):
+        if getattr(self, "cross_validation_folds", None) is not None:
             self.setup_params["fold"] = self.cross_validation_folds
         LOG.info(self.setup_params)
 
@@ -153,11 +152,21 @@ class BaseModelTrainer:
                 score_func=average_precision_score,
                 average="weighted",
             )
-        self.best_model = (
-            self.exp.compare_models(include=self.models)
-            if getattr(self, "models", None)
-            else self.exp.compare_models()
-        )
+        # Build arguments for compare_models()
+        compare_kwargs = {}
+        if getattr(self, "models", None):
+            compare_kwargs["include"] = self.models
+
+        # Respect explicit cross-validation flag
+        if getattr(self, "cross_validation", None) is not None:
+            compare_kwargs["cross_validation"] = self.cross_validation
+
+        # Respect explicit fold count
+        if getattr(self, "cross_validation_folds", None) is not None:
+            compare_kwargs["fold"] = self.cross_validation_folds
+
+        LOG.info(f"compare_models kwargs: {compare_kwargs}")
+        self.best_model = self.exp.compare_models(**compare_kwargs)
         self.results = self.exp.pull()
         if self.task_type == "classification":
             self.results.rename(columns={"AUC": "ROC-AUC"}, inplace=True)
@@ -244,29 +253,53 @@ class BaseModelTrainer:
 
         # — Validation Summary & Configuration —
         val_df = self.results.copy()
+        # mapping raw plot keys to user-friendly titles
+        plot_title_map = {
+            "learning":       "Learning Curve",
+            "vc":             "Validation Curve",
+            "calibration":    "Calibration Curve",
+            "dimension":      "Dimensionality Reduction",
+            "manifold":       "Manifold Learning",
+            "rfe":            "Recursive Feature Elimination",
+            "threshold":      "Threshold Plot",
+            "percentage_above_below": "Percentage Above vs. Below Cutoff",
+            "class_report":   "Classification Report",
+            "pr_auc":         "Precision-Recall AUC",
+            "roc_auc":        "Receiver Operating Characteristic AUC"
+        }
         val_df.drop(columns=["TT (Ec)", "TT (Sec)"], errors="ignore", inplace=True)
         summary_html = (
             header
-            + "<h3>Validation Summary & Configuration</h3>"
-            + '<div class="table-wrapper">' +
-                val_df.to_html(index=False, classes="table sortable") +
-              '</div>'
-            + "<h3>Setup Parameters</h3>"
-            + '<div class="table-wrapper">' +
-                df_setup.to_html(index=False, classes="table sortable") +
-              '</div>'
+            + "<h2>Train & Validation Summary</h2>"
+            + '<div class="table-wrapper">'
+                + val_df.to_html(index=False, classes="table sortable")
+              + '</div>'
+            + "<h2>Setup Parameters</h2>"
+            + '<div class="table-wrapper">'
+                + df_setup.to_html(index=False, classes="table sortable")
+              + '</div>'
+            # — Hyperparameters
+            + "<h2>Best Model Hyperparameters</h2>"
+            + '<div class="table-wrapper">'
+                + pd.DataFrame(
+                    self.best_model.get_params().items(),
+                    columns=["Parameter","Value"]
+                ).to_html(index=False, classes="table sortable")
+              + '</div>'
         )
         # re-inject all your original PyCaret validation plots
         for name in [
-            "learning", "vc", "auc", "error", "class_report", "calibration",
-            "dimension", "manifold", "rfe", "threshold"
+            "learning", "vc", "calibration",
+            "dimension", "manifold", "rfe",
+            "threshold", "percentage_above_below"
         ]:
             if name in self.plots:
                 summary_html += "<hr>"
                 b64 = encode_image_to_base64(self.plots[name])
+                title = plot_title_map.get(name, name.replace("_", " ").title())
                 summary_html += (
                     '<div class="plot">'
-                    f"<h4>{name.replace('_',' ').title()}</h4>"
+                    f"<h2>{title}</h2>"
                     f'<img src="data:image/png;base64,{b64}" '
                     'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
                     "</div>"
@@ -275,19 +308,17 @@ class BaseModelTrainer:
         # — Test Summary —
         test_html = (
             header
-            + "<h3>Test Summary</h3>"
-            + '<div class="table-wrapper">' +
-                self.test_result_df.to_html(index=False, classes="table sortable") +
-              '</div>'
-            + "<h3>Visualizations</h3>"
+            + '<div class="table-wrapper">'
+                + self.test_result_df.to_html(index=False, classes="table sortable")
+              + '</div>'
         )
 
         # 5a) Explainer-substituted plots in order
         test_order = [
+            "confusion_matrix",
             "roc_auc",
             "pr_auc",
             "lift_curve",
-            "confusion_matrix",
             "threshold",
             "cumulative_precision",
         ]
@@ -295,25 +326,27 @@ class BaseModelTrainer:
             fig_or_fn = self.explainer_plots.pop(key, None)
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
-                test_html += add_plot_to_html(fig) + add_hr_to_html()
-
+                title = plot_title_map.get(key, key.replace("_", " ").title())
+                test_html += f"<h2>{title}</h2>" \
+                          + add_plot_to_html(fig) \
+                          + add_hr_to_html()
         # 5b) Remaining PyCaret test plots
         for name, path in self.plots.items():
             if name in test_order:
                 continue
             # include only the ones you asked to keep
-            if name in {"threshold","pr","class_report","calibration"}:
+            if name in {"threshold","pr_auc","class_report"}:
+                # add a meaningful title via our map
+                title = plot_title_map.get(name, name.replace("_", " ").title())
                 b64 = encode_image_to_base64(path)
-                test_html += (
-                    '<div class="plot">'
-                    f"<h4>{name.replace('_',' ').title()}</h4>"
-                    f'<img src="data:image/png;base64,{b64}" '
-                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
-                    "</div>" + add_hr_to_html()
-                )
+                test_html += f"<h2>{title}</h2>" \
+                  '<div class="plot">' \
+                    f'<img src="data:image/png;base64,{b64}" ' \
+                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>' \
+                  "</div>" + add_hr_to_html()
 
         # — Feature Importance —
-        feature_html = header + "<h3>Feature Importance</h3>"
+        feature_html = header
 
         # 6a) PyCaret’s default feature importances
         feature_html += FeatureImportanceAnalyzer(
@@ -330,13 +363,19 @@ class BaseModelTrainer:
             fig_or_fn = self.explainer_plots.pop(key, None)
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
-                feature_html += add_plot_to_html(fig) + add_hr_to_html()
+                title = key.replace("_", " ").title()
+                feature_html += f"<h2>{title}</h2>"  \
+                             + add_plot_to_html(fig) \
+                             + add_hr_to_html()
 
         # 6c) PDPs last
         pdp_keys = sorted(k for k in self.explainer_plots if k.startswith("pdp__"))
         for k in pdp_keys:
             fig = self.explainer_plots[k]()
-            feature_html += add_plot_to_html(fig) + add_hr_to_html()
+            title = k.replace("pdp__", "PDP ").replace("_", " ").title()
+            feature_html += f"<h2>{title}</h2>" \
+                         + add_plot_to_html(fig) \
+                         + add_hr_to_html()
 
         # 7) Assemble final HTML (three tabs)
         html = get_html_template()

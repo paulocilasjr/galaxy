@@ -246,10 +246,11 @@ class BaseModelTrainer:
                 """
 
         analyzer = FeatureImportanceAnalyzer(
-            data=self.data,
-            target_col=self.target_col,
-            task_type=self.task_type,
-            output_dir=self.output_dir)
+            task_type   = self.task_type,
+            output_dir  = self.output_dir,
+            exp         = self.exp,
+            best_model  = self.best_model
+        )
         feature_importance_html = analyzer.run()
 
         html_content = f"""

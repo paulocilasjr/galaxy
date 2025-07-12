@@ -162,7 +162,6 @@ class FeatureImportanceAnalyzer:
             """
 
         html_content = f"""
-            <h1>PyCaret Feature Importance Report</h1>
             {plots_html}
         """
 
