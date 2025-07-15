@@ -183,7 +183,28 @@ class BaseModelTrainer:
             f.create_dataset("model", data=np.void(model_bytes))
 
     def generate_plots(self):
-        raise NotImplementedError("Subclasses should implement this method")
+        LOG.info("Generating PyCaret diagnostic pltos")
+
+        # choose the right plots based on task
+        if self.task_type == "classification":
+            plot_names = [
+                "learning", "vc", "calibration", "dimension",
+                "manifold", "rfe", "threshold", "percentage_above_below",
+                "class_report", "pr_auc", "roc_auc"
+            ]
+        else:
+            plot_names = [
+                "residuals", "vc", "parameter", "error", "learning"
+            ]
+        for name in plot_names:
+            try:
+                ax = self.exp.plot_model(self.best_model, plot=name, save=False)
+                out_path = Path(self.output_dir) / f"plot_{name}.png"
+                fig = ax.get_figure()
+                fig.savefig(out_path, bbox_inches="tight")
+                self.plots[name] = str(out_path)
+            except Exception as e:
+                LOG.warning(f"Could not generate {name} plot: {e}")
 
     def encode_image_to_base64(self, img_path: str) -> str:
         with open(img_path, "rb") as img_file:
@@ -277,6 +298,8 @@ class BaseModelTrainer:
             "class_report": "Classification Report",
             "pr_auc": "Precision-Recall AUC",
             "roc_auc": "Receiver Operating Characteristic AUC",
+            "residuals": "Residuals Distribution",
+            "eror": "Prediction Error Distribution",
         }
         val_df.drop(columns=["TT (Ec)", "TT (Sec)"], errors="ignore", inplace=True)
         summary_html = (
@@ -297,17 +320,17 @@ class BaseModelTrainer:
             )
             + "</div>"
         )
-        # re-inject all your original PyCaret validation plots
-        for name in [
-            "learning",
-            "vc",
-            "calibration",
-            "dimension",
-            "manifold",
-            "rfe",
-            "threshold",
-            "percentage_above_below",
-        ]:
+
+        # choose summary plots based on task type
+        if self.task_type == "classification":
+            summary_plots = [
+                "learning", "vc", "calibration", "dimension",
+                "manifold", "rfe", "threshold", "percentage_above_below",
+            ]
+        else:
+            summary_plots = ["learning", "vc", "parameter", "residuals"]
+
+        for name in summary_plots:
             if name in self.plots:
                 summary_html += "<hr>"
                 b64 = encode_image_to_base64(self.plots[name])
@@ -327,16 +350,35 @@ class BaseModelTrainer:
             + self.test_result_df.to_html(index=False, classes="table sortable")
             + "</div>"
         )
+        if self.task_type == "regression":
+            try:
+                y_true = pd.Series(self.exp.y_test_transformed).reset_index(drop=True).rename("True")
+                y_pred = pd.Series(self.best_model.predict(self.exp.X_test_transformed)).rename("Predicted")
+                df_tp = pd.concat([y_true, y_pred], axis=1)
+                test_html += '<h2>True vs Predicted Values</h2>'
+                test_html += (
+                    '<div class="table-wrapper" style="max-height:400px; overflow-y:auto;">'
+                    + df_tp.head(50).to_html(index=False, classes="table sortable")
+                    + '</div>'
+                    + add_hr_to_html()
+                )
+            except Exception as e:
+                LOG.warning(f"Could not generate True vs Predicted table: {e}")
 
         # 5a) Explainer-substituted plots in order
-        test_order = [
-            "confusion_matrix",
-            "roc_auc",
-            "pr_auc",
-            "lift_curve",
-            "threshold",
-            "cumulative_precision",
-        ]
+        if self.task_type == "regression":
+            test_order = [
+                "residuals"
+            ]
+        else:
+            test_order = [
+                "confusion_matrix",
+                "roc_auc",
+                "pr_auc",
+                "lift_curve",
+                "threshold",
+                "cumulative_precision",
+            ]
         for key in test_order:
             fig_or_fn = self.explainer_plots.pop(key, None)
             if fig_or_fn is not None:
@@ -345,20 +387,37 @@ class BaseModelTrainer:
                 test_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
         # 5b) Remaining PyCaret test plots
         for name, path in self.plots.items():
-            if name in test_order:
-                continue
-            # include only the ones you asked to keep
-            if name in {"threshold", "pr_auc", "class_report"}:
-                # add a meaningful title via our map
+            # classification: include only the small extras, before skipping anything
+            if self.task_type == "classification" and name in {"threshold", "pr_auc", "class_report"}:
                 title = plot_title_map.get(name, name.replace("_", " ").title())
                 b64 = encode_image_to_base64(path)
                 test_html += (
                     f"<h2>{title}</h2>"
-                    '<div class="plot">'
-                    f'<img src="data:image/png;base64,{b64}" '
-                    'style="max-width:90%;max-height:600px;border:1px solid #ddd;"/>'
-                    "</div>" + add_hr_to_html()
+                    "<div class='plot'>"
+                    f"<img src='data:image/png;base64,{b64}' "
+                    "style='max-width:90%;max-height:600px;border:1px solid #ddd;'/>"
+                    "</div>"
+                    + add_hr_to_html()
                 )
+                continue
+
+            # regression: explicitly include the 'error' plot, before skipping
+            if self.task_type == "regression" and name == "error":
+                title = plot_title_map.get("error", "Prediction Error Distribution")
+                b64 = encode_image_to_base64(path)
+                test_html += (
+                    f"<h2>{title}</h2>"
+                    "<div class='plot'>"
+                    f"<img src='data:image/png;base64,{b64}' "
+                    "style='max-width:90%;max-height:600px;border:1px solid #ddd;'/>"
+                    "</div>"
+                    + add_hr_to_html()
+                )
+                continue
+
+            # now skip any plots already rendered via test_order
+            if name in test_order:
+                continue
 
         # — Feature Importance —
         feature_html = header
@@ -378,16 +437,19 @@ class BaseModelTrainer:
             fig_or_fn = self.explainer_plots.pop(key, None)
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
-                title = key.replace("_", " ").title()
+                # give SHAP plots explicit titles
+                title = "Mean Absolute SHAP Value Impact" if key == "shap_mean" else "Permutation Feature Importance"
                 feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
 
         # 6c) PDPs last
         pdp_keys = sorted(k for k in self.explainer_plots if k.startswith("pdp__"))
         for k in pdp_keys:
-            fig = self.explainer_plots[k]()
-            title = k.replace("pdp__", "PDP ").replace("_", " ").title()
+            fig_or_fn = self.explainer_plots[k]
+            fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
+            # extract feature name
+            feature = k.split("__", 1)[1]
+            title = f"Partial Dependence for {feature}"
             feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
-
         # 7) Assemble final HTML (three tabs)
         html = get_html_template()
         html += "<h1>Tabular Learner Model Report</h1>"
