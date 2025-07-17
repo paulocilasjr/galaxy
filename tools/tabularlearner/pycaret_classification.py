@@ -1,11 +1,11 @@
 import logging
 import types
+from typing import Dict
 
 from base_model_trainer import BaseModelTrainer
 from dashboard import generate_classifier_explainer_dashboard
 from plotly.graph_objects import Figure
 from pycaret.classification import ClassificationExperiment
-from typing import Dict
 from utils import predict_proba
 
 LOG = logging.getLogger(__name__)
@@ -50,20 +50,20 @@ class ClassificationModelTrainer(BaseModelTrainer):
             )
 
         plots = [
-            "confusion_matrix",
-            "auc",
-            "threshold",
-            "pr",
-            "error",
-            "class_report",
-            "learning",
-            "calibration",
-            "vc",
-            "dimension",
-            "manifold",
-            "rfe",
-            "feature",
-            "feature_all",
+            'confusion_matrix',
+            'auc',
+            'threshold',
+            'pr',
+            'error',
+            'class_report',
+            'learning',
+            'calibration',
+            'vc',
+            'dimension',
+            'manifold',
+            'rfe',
+            'feature',
+            'feature_all',
         ]
         for plot_name in plots:
             try:
@@ -106,7 +106,7 @@ class ClassificationModelTrainer(BaseModelTrainer):
         y_test = self.exp.y_test_transformed
         explainer = ClassifierExplainer(self.best_model, X_test, y_test)
 
-        # a dict to hold the raw Figure objects
+        # a dict to hold the raw Figure objects or callables
         self.explainer_plots: Dict[str, Figure] = {}
 
         # these go into the Test tab
@@ -131,17 +131,32 @@ class ClassificationModelTrainer(BaseModelTrainer):
 
         # permutation importances
         try:
-            self.explainer_plots["shap_perm"] = (
-                lambda: explainer.plot_importances(kind="permutation")
+            self.explainer_plots["shap_perm"] = lambda: explainer.plot_importances(
+                kind="permutation"
             )
         except Exception as e:
             LOG.warning(f"Could not generate shap_perm: {e}")
 
         # PDPs for each feature (appended last)
+        valid_feats = []
         for feat in self.features_name:
-            try:
-                self.explainer_plots[f"pdp__{feat}"] = (
-                    lambda f=feat: explainer.plot_pdp(f)
-                )
-            except Exception as e:
-                LOG.warning(f"Could not generate PDP for {feat}: {e}")
+            if feat in explainer.X.columns or feat in explainer.onehot_cols:
+                valid_feats.append(feat)
+            else:
+                LOG.warning(f"Skipping PDP for feature {feat!r}: not found in explainer data")
+
+        for feat in valid_feats:
+            # wrap each PDP call to catch any unexpected AssertionErrors
+            def make_pdp_plotter(f):
+                def _plot():
+                    try:
+                        return explainer.plot_pdp(f)
+                    except AssertionError as ae:
+                        LOG.warning(f"PDP AssertionError for {f!r}: {ae}")
+                        return None
+                    except Exception as e:
+                        LOG.error(f"Unexpected error plotting PDP for {f!r}: {e}")
+                        return None
+                return _plot
+
+            self.explainer_plots[f"pdp__{feat}"] = make_pdp_plotter(feat)

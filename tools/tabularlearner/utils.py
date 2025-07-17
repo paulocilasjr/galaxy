@@ -1,7 +1,8 @@
 import base64
 import logging
-import numpy as np
 from typing import Optional
+
+import numpy as np
 
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
@@ -189,7 +190,10 @@ def get_html_closing() -> str:
 
 
 def build_tabbed_html(
-    summary_html: str, test_html: str, feature_html: str, explainer_html: Optional[str] = None
+    summary_html: str,
+    test_html: str,
+    feature_html: str,
+    explainer_html: Optional[str] = None,
 ) -> str:
     """
     Render the tabbed sections and an always-visible Help button.
@@ -205,7 +209,9 @@ def build_tabbed_html(
         '<div class="tab" onclick="showTab(\'feature\')">Feature Importance</div>',
     ]
     if explainer_html:
-        tabs.append('<div class="tab" onclick="showTab(\'explainer\')">Explainer Plots</div>')
+        tabs.append(
+            '<div class="tab" onclick="showTab(\'explainer\')">Explainer Plots</div>'
+        )
     tabs.append('<button id="openMetricsHelp" class="help-btn">Help</button>')
     tabs.append("</div>")
     tabs_section = "\n".join(tabs)
@@ -217,7 +223,9 @@ def build_tabbed_html(
         f'<div id="feature" class="tab-content">{feature_html}</div>',
     ]
     if explainer_html:
-        contents.append(f'<div id="explainer" class="tab-content">{explainer_html}</div>')
+        contents.append(
+            f'<div id="explainer" class="tab-content">{explainer_html}</div>'
+        )
     content_section = "\n".join(contents)
 
     # JS
@@ -245,7 +253,11 @@ def customize_figure_layout(fig, margin_dict=None):
 def add_plot_to_html(fig, include_plotlyjs=True) -> str:
     custom_margin = {"l": 40, "r": 40, "t": 60, "b": 60}
     fig = customize_figure_layout(fig, margin_dict=custom_margin)
-    return fig.to_html(full_html=False, default_height=350, include_plotlyjs="cdn" if include_plotlyjs else False)
+    return fig.to_html(
+        full_html=False,
+        default_height=350,
+        include_plotlyjs="cdn" if include_plotlyjs else False,
+    )
 
 
 def add_hr_to_html() -> str:

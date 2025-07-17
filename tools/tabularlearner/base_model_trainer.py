@@ -11,12 +11,12 @@ from feature_help_modal import get_feature_metrics_help_modal
 from feature_importance import FeatureImportanceAnalyzer
 from sklearn.metrics import average_precision_score
 from utils import (
-    get_html_template,
-    build_tabbed_html,
-    get_html_closing,
-    encode_image_to_base64,
-    add_plot_to_html,
     add_hr_to_html,
+    add_plot_to_html,
+    build_tabbed_html,
+    encode_image_to_base64,
+    get_html_closing,
+    get_html_template,
 )
 
 logging.basicConfig(level=logging.DEBUG)
@@ -70,7 +70,9 @@ class BaseModelTrainer:
 
         numeric_cols = self.data.select_dtypes(include=["number"]).columns
         non_numeric_cols = self.data.select_dtypes(exclude=["number"]).columns
-        self.data[numeric_cols] = self.data[numeric_cols].apply(pd.to_numeric, errors="coerce")
+        self.data[numeric_cols] = self.data[numeric_cols].apply(
+            pd.to_numeric, errors="coerce"
+        )
         if len(non_numeric_cols) > 0:
             LOG.info(f"Non-numeric columns found: {non_numeric_cols.tolist()}")
 
@@ -193,14 +195,20 @@ class BaseModelTrainer:
         # choose the right plots based on task
         if self.task_type == "classification":
             plot_names = [
-                "learning", "vc", "calibration", "dimension",
-                "manifold", "rfe", "threshold", "percentage_above_below",
-                "class_report", "pr_auc", "roc_auc"
+                "learning",
+                "vc",
+                "calibration",
+                "dimension",
+                "manifold",
+                "rfe",
+                "threshold",
+                "percentage_above_below",
+                "class_report",
+                "pr_auc",
+                "roc_auc",
             ]
         else:
-            plot_names = [
-                "residuals", "vc", "parameter", "error", "learning"
-            ]
+            plot_names = ["residuals", "vc", "parameter", "error", "learning"]
         for name in plot_names:
             try:
                 ax = self.exp.plot_model(self.best_model, plot=name, save=False)
@@ -253,7 +261,11 @@ class BaseModelTrainer:
             pk = key.lower().replace(" ", "_")
             v = all_params.get(pk)
             if key == "Train Size":
-                frac = float(v) if v is not None else (n_train / total_rows if total_rows else 0)
+                frac = (
+                    float(v)
+                    if v is not None
+                    else (n_train / total_rows if total_rows else 0)
+                )
                 dv = f"{frac:.2f} ({n_train} rows)"
             elif key in {
                 "Normalize",
@@ -279,11 +291,15 @@ class BaseModelTrainer:
         df_setup.to_csv(Path(self.output_dir) / "setup_params.csv", index=False)
 
         # 4) Persist CSVs
-        self.results.to_csv(Path(self.output_dir) / "comparison_results.csv", index=False)
-        self.test_result_df.to_csv(Path(self.output_dir) / "test_results.csv", index=False)
-        pd.DataFrame(self.best_model.get_params().items(), columns=["Parameter", "Value"]).to_csv(
-            Path(self.output_dir) / "best_model.csv", index=False
+        self.results.to_csv(
+            Path(self.output_dir) / "comparison_results.csv", index=False
         )
+        self.test_result_df.to_csv(
+            Path(self.output_dir) / "test_results.csv", index=False
+        )
+        pd.DataFrame(
+            self.best_model.get_params().items(), columns=["Parameter", "Value"]
+        ).to_csv(Path(self.output_dir) / "best_model.csv", index=False)
 
         # 5) Header
         header = f"<h2>Best Model: {best_model_name}</h2>"
@@ -320,17 +336,23 @@ class BaseModelTrainer:
             # — Hyperparameters
             + "<h2>Best Model Hyperparameters</h2>"
             + '<div class="table-wrapper">'
-            + pd.DataFrame(self.best_model.get_params().items(), columns=["Parameter", "Value"]).to_html(
-                index=False, classes="table sortable"
-            )
+            + pd.DataFrame(
+                self.best_model.get_params().items(), columns=["Parameter", "Value"]
+            ).to_html(index=False, classes="table sortable")
             + "</div>"
         )
 
         # choose summary plots based on task type
         if self.task_type == "classification":
             summary_plots = [
-                "learning", "vc", "calibration", "dimension",
-                "manifold", "rfe", "threshold", "percentage_above_below",
+                "learning",
+                "vc",
+                "calibration",
+                "dimension",
+                "manifold",
+                "rfe",
+                "threshold",
+                "percentage_above_below",
             ]
         else:
             summary_plots = ["learning", "vc", "parameter", "residuals"]
@@ -357,14 +379,20 @@ class BaseModelTrainer:
         )
         if self.task_type == "regression":
             try:
-                y_true = pd.Series(self.exp.y_test_transformed).reset_index(drop=True).rename("True")
-                y_pred = pd.Series(self.best_model.predict(self.exp.X_test_transformed)).rename("Predicted")
+                y_true = (
+                    pd.Series(self.exp.y_test_transformed)
+                    .reset_index(drop=True)
+                    .rename("True")
+                )
+                y_pred = pd.Series(
+                    self.best_model.predict(self.exp.X_test_transformed)
+                ).rename("Predicted")
                 df_tp = pd.concat([y_true, y_pred], axis=1)
-                test_html += '<h2>True vs Predicted Values</h2>'
+                test_html += "<h2>True vs Predicted Values</h2>"
                 test_html += (
                     '<div class="table-wrapper" style="max-height:400px; overflow-y:auto;">'
                     + df_tp.head(50).to_html(index=False, classes="table sortable")
-                    + '</div>'
+                    + "</div>"
                     + add_hr_to_html()
                 )
             except Exception as e:
@@ -372,9 +400,7 @@ class BaseModelTrainer:
 
         # 5a) Explainer-substituted plots in order
         if self.task_type == "regression":
-            test_order = [
-                "residuals"
-            ]
+            test_order = ["residuals"]
         else:
             test_order = [
                 "confusion_matrix",
@@ -389,11 +415,17 @@ class BaseModelTrainer:
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
                 title = plot_title_map.get(key, key.replace("_", " ").title())
-                test_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+                test_html += (
+                    f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+                )
         # 5b) Remaining PyCaret test plots
         for name, path in self.plots.items():
             # classification: include only the small extras, before skipping anything
-            if self.task_type == "classification" and name in {"threshold", "pr_auc", "class_report"}:
+            if self.task_type == "classification" and name in {
+                "threshold",
+                "pr_auc",
+                "class_report",
+            }:
                 title = plot_title_map.get(name, name.replace("_", " ").title())
                 b64 = encode_image_to_base64(path)
                 test_html += (
@@ -401,8 +433,7 @@ class BaseModelTrainer:
                     "<div class='plot'>"
                     f"<img src='data:image/png;base64,{b64}' "
                     "style='max-width:90%;max-height:600px;border:1px solid #ddd;'/>"
-                    "</div>"
-                    + add_hr_to_html()
+                    "</div>" + add_hr_to_html()
                 )
                 continue
 
@@ -415,8 +446,7 @@ class BaseModelTrainer:
                     "<div class='plot'>"
                     f"<img src='data:image/png;base64,{b64}' "
                     "style='max-width:90%;max-height:600px;border:1px solid #ddd;'/>"
-                    "</div>"
-                    + add_hr_to_html()
+                    "</div>" + add_hr_to_html()
                 )
                 continue
 
@@ -443,8 +473,14 @@ class BaseModelTrainer:
             if fig_or_fn is not None:
                 fig = fig_or_fn() if callable(fig_or_fn) else fig_or_fn
                 # give SHAP plots explicit titles
-                title = "Mean Absolute SHAP Value Impact" if key == "shap_mean" else "Permutation Feature Importance"
-                feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+                title = (
+                    "Mean Absolute SHAP Value Impact"
+                    if key == "shap_mean"
+                    else "Permutation Feature Importance"
+                )
+                feature_html += (
+                    f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+                )
 
         # 6c) PDPs last
         pdp_keys = sorted(k for k in self.explainer_plots if k.startswith("pdp__"))
@@ -454,7 +490,9 @@ class BaseModelTrainer:
             # extract feature name
             feature = k.split("__", 1)[1]
             title = f"Partial Dependence for {feature}"
-            feature_html += f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+            feature_html += (
+                f"<h2>{title}</h2>" + add_plot_to_html(fig) + add_hr_to_html()
+            )
         # 7) Assemble final HTML (three tabs)
         html = get_html_template()
         html += "<h1>Tabular Learner Model Report</h1>"
@@ -463,7 +501,9 @@ class BaseModelTrainer:
         html += get_html_closing()
 
         # 8) Write out
-        (Path(self.output_dir) / "comparison_result.html").write_text(html, encoding="utf-8")
+        (Path(self.output_dir) / "comparison_result.html").write_text(
+            html, encoding="utf-8"
+        )
         LOG.info(f"HTML report generated at: {self.output_dir}/comparison_result.html")
 
     def save_dashboard(self):

@@ -2,9 +2,9 @@ import base64
 import logging
 import os
 
-import shap
 import matplotlib.pyplot as plt
 import pandas as pd
+import shap
 from pycaret.classification import ClassificationExperiment
 from pycaret.regression import RegressionExperiment
 
@@ -13,7 +13,16 @@ LOG = logging.getLogger(__name__)
 
 
 class FeatureImportanceAnalyzer:
-    def __init__(self, task_type, output_dir, data_path=None, data=None, target_col=None, exp=None, best_model=None):
+    def __init__(
+        self,
+        task_type,
+        output_dir,
+        data_path=None,
+        data=None,
+        target_col=None,
+        exp=None,
+        best_model=None,
+    ):
 
         self.task_type = task_type
         self.output_dir = output_dir
@@ -31,40 +40,44 @@ class FeatureImportanceAnalyzer:
                 LOG.info("Data loaded from memory")
             else:
                 self.target_col = target_col
-                self.data = pd.read_csv(data_path, sep=None, engine="python")
-                self.data.columns = self.data.columns.str.replace(".", "_")
+                self.data = pd.read_csv(data_path, sep=None, engine='python')
+                self.data.columns = self.data.columns.str.replace('.', '_')
                 self.data = self.data.fillna(self.data.median(numeric_only=True))
             self.target = self.data.columns[int(target_col) - 1]
-            self.exp = ClassificationExperiment() if task_type == "classification" else RegressionExperiment()
+            self.exp = (
+                ClassificationExperiment()
+                if task_type == "classification"
+                else RegressionExperiment()
+            )
 
         self.plots = {}
 
     def setup_pycaret(self):
-        if self.exp is not None and hasattr(self.exp, "is_setup") and self.exp.is_setup:
+        if self.exp is not None and hasattr(self.exp, 'is_setup') and self.exp.is_setup:
             LOG.info("Experiment already set up. Skipping PyCaret setup.")
             return
         LOG.info("Initializing PyCaret")
         setup_params = {
-            "target": self.target,
-            "session_id": 123,
-            "html": True,
-            "log_experiment": False,
-            "system_log": False,
+            'target': self.target,
+            'session_id': 123,
+            'html': True,
+            'log_experiment': False,
+            'system_log': False,
         }
         self.exp.setup(self.data, **setup_params)
 
     def save_tree_importance(self):
-        model = self.best_model or self.exp.get_config("best_model")
-        processed_features = self.exp.get_config("X_transformed").columns
+        model = self.best_model or self.exp.get_config('best_model')
+        processed_features = self.exp.get_config('X_transformed').columns
 
         # Try feature_importances_ or coef_ if available
         importances = None
         model_type = model.__class__.__name__
         self.tree_model_name = model_type  # Store the model name for reporting
 
-        if hasattr(model, "feature_importances_"):
+        if hasattr(model, 'feature_importances_'):
             importances = model.feature_importances_
-        elif hasattr(model, "coef_"):
+        elif hasattr(model, 'coef_'):
             # For linear models, flatten coef_ and take abs (importance as magnitude)
             importances = abs(model.coef_).flatten()
         else:
@@ -83,29 +96,37 @@ class FeatureImportanceAnalyzer:
             self.tree_model_name = None
             return
 
-        feature_importances = pd.DataFrame({"Feature": processed_features, "Importance": importances}).sort_values(
-            by="Importance", ascending=False
-        )
+        feature_importances = pd.DataFrame(
+            {'Feature': processed_features, 'Importance': importances}
+        ).sort_values(by='Importance', ascending=False)
         plt.figure(figsize=(10, 6))
-        plt.barh(feature_importances["Feature"], feature_importances["Importance"])
-        plt.xlabel("Importance")
-        plt.title(f"Feature Importance ({model_type})")
-        plot_path = os.path.join(self.output_dir, "tree_importance.png")
+        plt.barh(feature_importances['Feature'], feature_importances['Importance'])
+        plt.xlabel('Importance')
+        plt.title(f'Feature Importance ({model_type})')
+        plot_path = os.path.join(self.output_dir, 'tree_importance.png')
         plt.savefig(plot_path)
         plt.close()
-        self.plots["tree_importance"] = plot_path
+        self.plots['tree_importance'] = plot_path
 
     def save_shap_values(self):
-        # Use existing best_model if available
         model = self.best_model or self.exp.get_config("best_model")
 
-        # Grab the exact transformed data the model was trained on
-        X_data = getattr(self.exp, "X_test_transformed", None)
-        if X_data is None:
-            X_data = getattr(self.exp, "X_train_transformed", None)
+        try:
+            X_data = self.exp.get_config("X_test_transformed")
+        except KeyError:
+            X_data = None
 
         if X_data is None:
-            raise RuntimeError("No transformed data found for computing SHAP values.")
+            try:
+                X_data = self.exp.get_config("X_train_transformed")
+            except KeyError:
+                X_data = None
+
+        if X_data is None:
+            raise RuntimeError(
+                "Could not find 'X_test_transformed' or 'X_train_transformed' in the experiment. "
+                "Make sure PyCaret setup/compare_models was run with feature_selection=True."
+            )
 
         tree_classes = (
             "LGBM",
@@ -116,29 +137,27 @@ class FeatureImportanceAnalyzer:
             "ExtraTrees",
             "HistGradientBoosting",
         )
-        model_class_name = model.__class__.__name__
-        self.shap_model_name = model_class_name
+        model_name = model.__class__.__name__
+        self.shap_model_name = model_name
 
-        if any(tc in model_class_name for tc in tree_classes):
+        if any(tc in model_name for tc in tree_classes):
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X_data)
             plot_X = X_data
-            plot_title = f"SHAP Summary for {model_class_name} (TreeExplainer)"
+            title = f"SHAP Summary for {model_name} (TreeExplainer)"
         else:
-            # Use the same feature‐space for KernelExplainer sampling
-            sampled_X = X_data.sample(100, random_state=42)
-            explainer = shap.KernelExplainer(model.predict, sampled_X)
-            shap_values = explainer.shap_values(sampled_X)
-            plot_X = sampled_X
-            plot_title = f"SHAP Summary for {model_class_name} (KernelExplainer)"
+            bg = X_data.sample(100, random_state=42)
+            explainer = shap.KernelExplainer(model.predict, bg)
+            shap_values = explainer.shap_values(bg)
+            plot_X = bg
+            title = f"SHAP Summary for {model_name} (KernelExplainer)"
 
-        # Plot and save
         shap.summary_plot(shap_values, plot_X, show=False)
-        plt.title(plot_title)
-        plot_path = os.path.join(self.output_dir, "shap_summary.png")
-        plt.savefig(plot_path)
+        plt.title(title)
+        out = os.path.join(self.output_dir, "shap_summary.png")
+        plt.savefig(out)
         plt.close()
-        self.plots["shap_summary"] = plot_path
+        self.plots["shap_summary"] = out
 
     def generate_html_report(self):
         LOG.info("Generating HTML report")
@@ -146,12 +165,18 @@ class FeatureImportanceAnalyzer:
         plots_html = ""
         for plot_name, plot_path in self.plots.items():
             # Special handling for tree importance: skip if no model name (not generated)
-            if plot_name == "tree_importance" and not getattr(self, "tree_model_name", None):
+            if plot_name == 'tree_importance' and not getattr(
+                self, 'tree_model_name', None
+            ):
                 continue
             encoded_image = self.encode_image_to_base64(plot_path)
-            if plot_name == "tree_importance" and getattr(self, "tree_model_name", None):
-                section_title = f"Feature importance analysis from a trained {self.tree_model_name}"
-            elif plot_name == "shap_summary":
+            if plot_name == 'tree_importance' and getattr(
+                self, 'tree_model_name', None
+            ):
+                section_title = (
+                    f"Feature importance analysis from a trained {self.tree_model_name}"
+                )
+            elif plot_name == 'shap_summary':
                 section_title = f"SHAP Summary from a trained {getattr(self, 'shap_model_name', 'model')}"
             else:
                 section_title = plot_name
@@ -169,11 +194,15 @@ class FeatureImportanceAnalyzer:
         return html_content
 
     def encode_image_to_base64(self, img_path):
-        with open(img_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode("utf-8")
+        with open(img_path, 'rb') as img_file:
+            return base64.b64encode(img_file.read()).decode('utf-8')
 
     def run(self):
-        if self.exp is None or not hasattr(self.exp, "is_setup") or not self.exp.is_setup:
+        if (
+            self.exp is None
+            or not hasattr(self.exp, 'is_setup')
+            or not self.exp.is_setup
+        ):
             self.setup_pycaret()
         self.save_tree_importance()
         self.save_shap_values()
