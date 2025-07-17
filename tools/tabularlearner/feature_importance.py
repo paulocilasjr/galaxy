@@ -141,12 +141,18 @@ class FeatureImportanceAnalyzer:
         self.shap_model_name = model_name
 
         if any(tc in model_name for tc in tree_classes):
+            try:
+                used_features = model.booster_.feature_name()
+            except Exception:
+                used_features = getattr(model, "feature_name", X_data.columns)
+            X_data = X_data[used_features]
             explainer = shap.TreeExplainer(model)
             shap_values = explainer.shap_values(X_data)
             plot_X = X_data
             title = f"SHAP Summary for {model_name} (TreeExplainer)"
         else:
-            bg = X_data.sample(100, random_state=42)
+            max_bg = min(len(X_data), 100)
+            bg = X_data.sample(max_bg, random_state=42)
             explainer = shap.KernelExplainer(model.predict, bg)
             shap_values = explainer.shap_values(bg)
             plot_X = bg
