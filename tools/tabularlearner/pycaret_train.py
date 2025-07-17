@@ -97,6 +97,12 @@ def main():
         help="Selected models for training",
     )
     parser.add_argument(
+        "--tune_model",
+        action="store_true",
+        default=False,
+        help="Tune the best model hyperparameters after training",
+    )
+    parser.add_argument(
         "--random_seed",
         type=int,
         default=42,
@@ -130,6 +136,7 @@ def main():
         "feature_interaction": args.feature_interaction,
         "feature_ratio": args.feature_ratio,
         "fix_imbalance": args.fix_imbalance,
+        "tune_model": args.tune_model,
     }
     LOG.info(f"Model kwargs: {model_kwargs}")
 

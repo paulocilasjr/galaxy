@@ -17,6 +17,9 @@
                 --models '$regression_models'
             #end if
         #end if
+        #if $tune_model
+            --tune_model
+        #end if
         #if $customize_defaults == "true"
                 #if $train_size
                 --train_size '$train_size' 
@@ -120,6 +123,7 @@
                 </param>
             </when>
         </conditional>
+        <param name="tune_model" type="boolean" truevalue="True" falsevalue="False" label="Tune hyperparameters" help="Hyperparameter tuning on the best model" />
         <param name="random_seed" type="integer" value="42" label="Random Seed" help="Random seed for reproducibility." />
         <conditional name="advanced_settings">
             <param name="customize_defaults" type="select" label="Customize Default Settings?" help="Select yes if you want to customize the default settings of the experiment.">

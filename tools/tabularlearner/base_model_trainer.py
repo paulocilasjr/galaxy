@@ -166,6 +166,11 @@ class BaseModelTrainer:
         LOG.info(f"compare_models kwargs: {compare_kwargs}")
         self.best_model = self.exp.compare_models(**compare_kwargs)
         self.results = self.exp.pull()
+        if getattr(self, "tune_model", False):
+            LOG.info("Tuning hyperparameters of the best model")
+            self.best_model = self.exp.tune_model(self.best_model)
+            self.results = self.exp.pull()
+
         if self.task_type == "classification":
             self.results.rename(columns={"AUC": "ROC-AUC"}, inplace=True)
         _ = self.exp.predict_model(self.best_model)
