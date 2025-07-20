@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 import os
@@ -11,6 +10,7 @@ from typing import Any, Dict, Optional, Protocol, Tuple
 
 import pandas as pd
 import pandas.api.types as ptypes
+from plotly_plots import build_classification_plots
 import yaml
 from constants import (
     IMAGE_PATH_COLUMN_NAME,
@@ -153,23 +153,27 @@ def format_config_table_html(
             f"</tr>"
         )
 
-    return (
-        "<h2 style='text-align: center;'>Training Setup</h2>"
-        "<div style='display: flex; justify-content: center;'>"
-        "<table style='border-collapse: collapse; width: 60%; table-layout: auto;'>"
-        "<thead><tr>"
-        "<th style='padding: 10px; border: 1px solid #ccc; text-align: left;'>"
-        "Parameter</th>"
-        "<th style='padding: 10px; border: 1px solid #ccc; text-align: center;'>"
-        "Value</th>"
-        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table></div><br>"
-        "<p style='text-align: center; font-size: 0.9em;'>"
-        "Model trained using Ludwig.<br>"
-        "If want to learn more about Ludwig default settings,"
-        "please check their <a href='https://ludwig.ai' target='_blank'>"
-        "website(ludwig.ai)</a>."
-        "</p><hr>"
-    )
+    html = f"""
+        <h2 style="text-align: center;">Model and Training Summary</h2>
+        <div style="display: flex; justify-content: center;">
+          <table style="border-collapse: collapse; width: 100%; table-layout: fixed;">
+            <thead><tr>
+              <th style="padding: 10px; border: 1px solid #ccc; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Parameter</th>
+              <th style="padding: 10px; border: 1px solid #ccc; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Value</th>
+            </tr></thead>
+            <tbody>
+              {''.join(rows)}
+            </tbody>
+          </table>
+        </div><br>
+        <p style="text-align: center; font-size: 0.9em;">
+          Model trained using <a href="https://ludwig.ai/" target="_blank" rel="noopener noreferrer">Ludwig</a>.
+          <a href="https://ludwig.ai/latest/configuration/" target="_blank" rel="noopener noreferrer">
+            Ludwig documentation provides detailed information about default model and training parameters
+          </a>
+        </p><hr>
+        """
+    return html
 
 
 def detect_output_type(test_stats):
@@ -959,10 +963,11 @@ class LudwigDirectBackend:
         tab1_content = config_html + metrics_html
 
         tab2_content = train_val_metrics_html + render_img_section(
-            "Training & Validation Visualizations", train_viz_dir
+            "Training and Validation Visualizations", train_viz_dir
         )
 
         # --- Predictions vs Ground Truth table ---
+
         preds_section = ""
         parquet_path = exp_dir / PREDICTIONS_PARQUET_FILE_NAME
         if output_type == "regression" and parquet_path.exists():
@@ -970,7 +975,6 @@ class LudwigDirectBackend:
                 # 1) load predictions from Parquet
                 df_preds = pd.read_parquet(parquet_path).reset_index(drop=True)
                 # assume the column containing your model's prediction is named "prediction"
-                # or contains that substring:
                 pred_col = next(
                     (c for c in df_preds.columns if "prediction" in c.lower()),
                     None,
@@ -981,11 +985,9 @@ class LudwigDirectBackend:
 
                 # 2) load ground truth for the test split from prepared CSV
                 df_all = pd.read_csv(config["label_column_data_path"])
-                df_gt = df_all[df_all[SPLIT_COLUMN_NAME] == 2][
-                    LABEL_COLUMN_NAME
-                ].reset_index(drop=True)
+                df_gt  = df_all[df_all[SPLIT_COLUMN_NAME] == 2][LABEL_COLUMN_NAME].reset_index(drop=True)
 
-                # 3) concatenate side‐by‐side
+                # 3) concatenate side-by-side
                 df_table = pd.concat([df_gt, df_pred], axis=1)
                 df_table.columns = [LABEL_COLUMN_NAME, "prediction"]
 
@@ -993,19 +995,25 @@ class LudwigDirectBackend:
                 preds_html = df_table.to_html(index=False, classes="predictions-table")
                 preds_section = (
                     "<h2 style='text-align: center;'>Ground Truth vs. Predictions</h2>"
-                        "<div style='overflow-y:auto; max-height:400px; overflow-x:auto; margin-bottom:20px;'>"
+                    "<div style='overflow-y:auto; max-height:400px; overflow-x:auto; margin-bottom:20px;'>"
                     + preds_html
                     + "</div>"
                 )
             except Exception as e:
                 logger.warning(f"Could not build Predictions vs GT table: {e}")
-        # Test tab = Metrics + Preds table + Visualizations
 
-        tab3_content = (
-            test_metrics_html
-            + preds_section
-            + render_img_section("Test Visualizations", test_viz_dir, output_type)
-        )
+        tab3_content = test_metrics_html + preds_section
+
+        if output_type in ("binary", "category"):
+            # build all interactive plots with titles
+            interactive_plots = build_classification_plots(str(test_stats_path))
+            for plot in interactive_plots:
+                tab3_content += (
+                    f"<h2 style='text-align: center;'>{plot['title']}</h2>"
+                    + plot['html']
+                )
+        # finally add any remaining static PNG visualizations
+        tab3_content += render_img_section("Test Visualizations", test_viz_dir, output_type)
 
         # assemble the tabs and help modal
         tabbed_html = build_tabbed_html(tab1_content, tab2_content, tab3_content)
