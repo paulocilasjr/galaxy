@@ -8,6 +8,8 @@ def get_html_template():
     <head>
         <meta charset="UTF-8">
         <title>Galaxy-Ludwig Report</title>
+
+        <!-- your existing styles -->
         <style>
           body {
               font-family: Arial, sans-serif;
@@ -32,29 +34,21 @@ def get_html_template():
               color: #4CAF50;
               padding-bottom: 5px;
           }
+          /* baseline table setup */
           table {
               border-collapse: collapse;
               margin: 20px 0;
               width: 100%;
-              table-layout: fixed; /* Enforces consistent column widths */
+              table-layout: fixed;
           }
           table, th, td {
               border: 1px solid #ddd;
           }
           th, td {
               padding: 8px;
-              text-align: center; /* Center-align text */
-              vertical-align: middle; /* Center-align content vertically */
-              word-wrap: break-word; /* Break long words to avoid overflow */
-          }
-          th:first-child, td:first-child {
-              width: 5%; /* Smaller width for the first column */
-          }
-          th:nth-child(2), td:nth-child(2) {
-              width: 50%; /* Wider for the metric/description column */
-          }
-          th:last-child, td:last-child {
-              width: 25%; /* Value column gets remaining space */
+              text-align: center;
+              vertical-align: middle;
+              word-wrap: break-word;
           }
           th {
               background-color: #4CAF50;
@@ -68,7 +62,105 @@ def get_html_template():
               max-width: 100%;
               height: auto;
           }
+
+          /* -------------------
+             SORTABLE COLUMNS
+             ------------------- */
+          table.performance-summary th.sortable {
+            cursor: pointer;
+            position: relative;
+            user-select: none;
+          }
+          /* hide arrows by default */
+          table.performance-summary th.sortable::after {
+            content: '';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            color: #666;
+          }
+          /* three states */
+          table.performance-summary th.sortable.sorted-none::after {
+            content: '⇅';
+          }
+          table.performance-summary th.sortable.sorted-asc::after {
+            content: '↑';
+          }
+          table.performance-summary th.sortable.sorted-desc::after {
+            content: '↓';
+          }
         </style>
+
+        <!-- sorting script -->
+        <script>
+        document.addEventListener('DOMContentLoaded', () => {
+          // 1) record each row's original position
+          document.querySelectorAll('table.performance-summary tbody').forEach(tbody => {
+            Array.from(tbody.rows).forEach((row, i) => {
+              row.dataset.originalOrder = i;
+            });
+          });
+
+          const getText = cell => cell.innerText.trim();
+          const comparer = (idx, asc) => (a, b) => {
+            const v1 = getText(a.children[idx]);
+            const v2 = getText(b.children[idx]);
+            const n1 = parseFloat(v1), n2 = parseFloat(v2);
+            if (!isNaN(n1) && !isNaN(n2)) {
+              return asc ? n1 - n2 : n2 - n1;
+            }
+            return asc
+              ? v1.localeCompare(v2)
+              : v2.localeCompare(v1);
+          };
+
+          document
+            .querySelectorAll('table.performance-summary th.sortable')
+            .forEach(th => {
+              th.addEventListener('click', () => {
+                const table = th.closest('table');
+                const allTh = table.querySelectorAll('th.sortable');
+                // clear all previous sort markers
+                allTh.forEach(h =>
+                  h.classList.remove('sorted-none','sorted-asc','sorted-desc')
+                );
+
+                // determine next state: none → asc → desc → none ...
+                let curr = th.classList.contains('sorted-asc')
+                  ? 'asc'
+                  : th.classList.contains('sorted-desc')
+                    ? 'desc'
+                    : 'none';
+                let next = curr === 'none'
+                  ? 'asc'
+                  : curr === 'asc'
+                    ? 'desc'
+                    : 'none';
+
+                // mark the clicked header
+                if (next === 'asc')      th.classList.add('sorted-asc');
+                else if (next === 'desc') th.classList.add('sorted-desc');
+                else                      th.classList.add('sorted-none');
+
+                // fetch rows and sort or restore
+                const tbody = table.querySelector('tbody');
+                let rows = Array.from(tbody.rows);
+                if (next === 'none') {
+                  rows.sort((a, b) =>
+                    a.dataset.originalOrder - b.dataset.originalOrder
+                  );
+                } else {
+                  const idx = Array.from(th.parentNode.children).indexOf(th);
+                  rows.sort(comparer(idx, next === 'asc'));
+                }
+                // re-append in new order
+                rows.forEach(r => tbody.appendChild(r));
+              });
+            });
+        });
+        </script>
     </head>
     <body>
     <div class="container">
