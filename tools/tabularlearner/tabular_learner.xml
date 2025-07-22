@@ -51,6 +51,9 @@
                 #if $fix_imbalance
                 --fix_imbalance 
                 #end if
+                #if $probability_threshold
+                --probability_threshold '$probability_threshold'
+                #end if
         #end if
         #if $test_file
             --test_file '$test_file'
@@ -150,6 +153,7 @@
                 <param name="remove_multicollinearity" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Remove Multicollinearity" help="Whether to remove multicollinear features before training." />
                 <param name="polynomial_features" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Polynomial Features" help="Whether to create polynomial features before training." />
                 <param name="fix_imbalance" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Fix Imbalance" help="ONLY for classfication! Whether to use SMOTE or similar methods to fix imbalance in the input dataset." />
+                <param name="probability_threshold" type="float" min="0.0" max="1.0" value="0.5" label="Classification Probability Threshold" help="Only applies to classification. Probability above which a prediction is considered positive. Default is 0.5." />
             </when>
             <when value="false">
                 <!-- No additional parameters to show if the user selects 'No' -->

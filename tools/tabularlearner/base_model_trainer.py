@@ -175,7 +175,13 @@ class BaseModelTrainer:
 
         if self.task_type == "classification":
             self.results.rename(columns={"AUC": "ROC-AUC"}, inplace=True)
-        _ = self.exp.predict_model(self.best_model)
+
+        prob_thresh = getattr(self, "probability_threshold", None)
+        if self.task_type == "classification" and prob_thresh is not None:
+            _ = self.exp.predict_model(self.best_model, probability_threshold=prob_thresh)
+        else:
+            _ = self.exp.predict_model(self.best_model)
+
         self.test_result_df = self.exp.pull()
         if self.task_type == "classification":
             self.test_result_df.rename(columns={"AUC": "ROC-AUC"}, inplace=True)
@@ -255,6 +261,7 @@ class BaseModelTrainer:
             "Polynomial Features",
             "Fix Imbalance",
             "Models",
+            "Probability Threshold",
         ]
         setup_rows = []
         for key in display_keys:
@@ -281,6 +288,8 @@ class BaseModelTrainer:
                 dv = v if v is not None else "None"
             elif key == "Models":
                 dv = ", ".join(map(str, v)) if isinstance(v, (list, tuple)) else "None"
+            elif key == "Probability Threshold":
+                dv = f"{v:.2f}" if v is not None else "0.5"
             else:
                 dv = v if v is not None else "None"
             setup_rows.append([key, dv])
