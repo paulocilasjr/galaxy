@@ -586,6 +586,8 @@ class LudwigDirectBackend:
             )
             output_type = "binary" if num_unique_labels == 2 else "category"
             output_feat = {"name": LABEL_COLUMN_NAME, "type": output_type}
+            if output_type == "binary" and config_params.get("threshold") is not None:
+                output_feat["threshold"] = float(config_params["threshold"])
             val_metric = None
 
         conf: Dict[str, Any] = {
@@ -1221,6 +1223,7 @@ class WorkflowOrchestrator:
                 "early_stop": self.args.early_stop,
                 "label_column_data_path": csv_path,
                 "augmentation": self.args.augmentation,
+                "threshold": self.args.threshold,
             }
             yaml_str = self.backend.prepare_config(backend_args, split_cfg)
 
@@ -1395,6 +1398,15 @@ def main():
             "random_blur, random_brightness, random_contrast. "
             "E.g. --augmentation random_horizontal_flip,random_rotate"
         ),
+    )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=None,
+        help=(
+            "Decision threshold for binary classification (0.0–1.0)."
+            "Overrides default 0.5."
+        )
     )
 
     args = parser.parse_args()
