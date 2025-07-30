@@ -119,15 +119,17 @@ def get_html_template():
           document
             .querySelectorAll('table.performance-summary th.sortable')
             .forEach(th => {
+              // initialize to "none" state
+              th.classList.add('sorted-none');
               th.addEventListener('click', () => {
                 const table = th.closest('table');
                 const allTh = table.querySelectorAll('th.sortable');
-                // clear all previous sort markers
+                // clear all markers
                 allTh.forEach(h =>
                   h.classList.remove('sorted-none','sorted-asc','sorted-desc')
                 );
 
-                // determine next state: none → asc → desc → none ...
+                // cycle state: none → asc → desc → none
                 let curr = th.classList.contains('sorted-asc')
                   ? 'asc'
                   : th.classList.contains('sorted-desc')
@@ -139,12 +141,10 @@ def get_html_template():
                     ? 'desc'
                     : 'none';
 
-                // mark the clicked header
-                if (next === 'asc')      th.classList.add('sorted-asc');
-                else if (next === 'desc') th.classList.add('sorted-desc');
-                else                      th.classList.add('sorted-none');
+                // apply next marker
+                th.classList.add(`sorted-${next}`);
 
-                // fetch rows and sort or restore
+                // sort or restore
                 const tbody = table.querySelector('tbody');
                 let rows = Array.from(tbody.rows);
                 if (next === 'none') {
@@ -155,7 +155,6 @@ def get_html_template():
                   const idx = Array.from(th.parentNode.children).indexOf(th);
                   rows.sort(comparer(idx, next === 'asc'));
                 }
-                // re-append in new order
                 rows.forEach(r => tbody.appendChild(r));
               });
             });
@@ -295,7 +294,7 @@ def build_tabbed_html(metrics_html: str, train_val_html: str, test_html: str) ->
 </style>
 
 <div class="tabs">
-  <div class="tab active" onclick="showTab('metrics')">Config &amp; Results Summary</div>
+  <div class="tab active" onclick="showTab('metrics')">Config and Results Summary</div>
   <div class="tab" onclick="showTab('trainval')">Train/Validation Results</div>
   <div class="tab" onclick="showTab('test')">Test Results</div>
   <!-- always-visible help button -->

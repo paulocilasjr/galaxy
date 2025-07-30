@@ -93,9 +93,6 @@ def format_config_table_html(
                         "<span style='font-size: 0.85em;'>"
                         "Based on model architecture and training setup "
                         "(e.g., fine-tuning).<br>"
-                        "See <a href='https://ludwig.ai/latest/configuration/trainer/"
-                        "#trainer-parameters' target='_blank'>"
-                        "Ludwig Trainer Parameters</a> for details."
                         "</span>"
                     )
                 else:
@@ -889,37 +886,33 @@ class LudwigDirectBackend:
             if not dir_path.exists():
                 return f"<h2>{title}</h2><p><em>Directory not found.</em></p>"
 
-            # collect every PNG except the base confusion_matrix and our injected ROC‐curve
+            # collect every PNG
             imgs = list(dir_path.glob("*.png"))
+
+            # --- EXCLUDE Ludwig's base confusion matrix and any top-N confusion_matrix files ---
             imgs = [
                 img for img in imgs
-                if img.name not in (
-                    "confusion_matrix.png",
-                    "roc_curves_from_prediction_statistics.png",
+                if not (
+                    img.name == "confusion_matrix.png" or
+                    img.name.startswith("confusion_matrix__label_top") or
+                    img.name == "roc_curves.png"
                 )
             ]
+
             if not imgs:
                 return f"<h2>{title}</h2><p><em>No plots found.</em></p>"
 
             if output_type == "binary":
                 order = [
-                    "confusion_matrix__label_top2.png",
                     "roc_curves_from_prediction_statistics.png",
                     "compare_performance_label.png",
                     "confusion_matrix_entropy__label_top2.png",
+                    # ...you can tweak ordering as needed
                 ]
                 img_names = {img.name: img for img in imgs}
-                ordered_imgs = [
-                    img_names[fname] for fname in order if fname in img_names
-                ]
-                remaining = sorted(
-                    [
-                        img
-                        for img in imgs
-                        if img.name not in order and img.name != "roc_curves.png"
-                    ]
-                )
-                imgs = ordered_imgs + remaining
+                ordered = [img_names[n] for n in order if n in img_names]
+                others = sorted(img for img in imgs if img.name not in order)
+                imgs = ordered + others
 
             elif output_type == "category":
                 unwanted = {
@@ -928,34 +921,23 @@ class LudwigDirectBackend:
                     "compare_classifiers_multiclass_multimetric__label_worst10.png",
                 }
                 display_order = [
-                    "confusion_matrix__label_top10.png",
                     "roc_curves.png",
                     "compare_performance_label.png",
                     "compare_classifiers_performance_from_prob.png",
-                    "compare_classifiers_multiclass_multimetric__label_sorted.png",
                     "confusion_matrix_entropy__label_top10.png",
                 ]
-                img_names = {img.name: img for img in imgs if img.name not in unwanted}
-                ordered_imgs = [
-                    img_names[fname] for fname in display_order if fname in img_names
-                ]
-                remaining = sorted(
-                    [img for img in img_names.values() if img.name not in display_order]
-                )
-                imgs = ordered_imgs + remaining
+                # filter and order
+                valid_imgs = [img for img in imgs if img.name not in unwanted]
+                img_map = {img.name: img for img in valid_imgs}
+                ordered = [img_map[n] for n in display_order if n in img_map]
+                others = sorted(img for img in valid_imgs if img.name not in display_order)
+                imgs = ordered + others
 
             else:
-                if output_type == "category":
-                    unwanted = {
-                        "compare_classifiers_multiclass_multimetric__label_best10.png",
-                        "compare_classifiers_multiclass_multimetric__label_top10.png",
-                        "compare_classifiers_multiclass_multimetric__label_worst10.png",
-                    }
-                    imgs = sorted([img for img in imgs if img.name not in unwanted])
-                else:
-                    imgs = sorted(imgs)
+                # regression: just sort whatever's left
+                imgs = sorted(imgs)
 
-            # 3) render each PNG with its own H2 title
+            # render each remaining PNG
             html = ""
             for img in imgs:
                 b64 = encode_image_to_base64(str(img))
