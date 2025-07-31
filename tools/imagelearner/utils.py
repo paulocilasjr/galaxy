@@ -124,27 +124,28 @@ def get_html_template():
               th.addEventListener('click', () => {
                 const table = th.closest('table');
                 const allTh = table.querySelectorAll('th.sortable');
-                // clear all markers
-                allTh.forEach(h =>
-                  h.classList.remove('sorted-none','sorted-asc','sorted-desc')
-                );
 
-                // cycle state: none → asc → desc → none
+                // 1) determine current state BEFORE clearing classes
                 let curr = th.classList.contains('sorted-asc')
                   ? 'asc'
                   : th.classList.contains('sorted-desc')
                     ? 'desc'
                     : 'none';
+                // 2) cycle to next state
                 let next = curr === 'none'
                   ? 'asc'
                   : curr === 'asc'
                     ? 'desc'
                     : 'none';
 
-                // apply next marker
+                // 3) clear all sort markers
+                allTh.forEach(h =>
+                  h.classList.remove('sorted-none','sorted-asc','sorted-desc')
+                );
+                // 4) apply the new marker
                 th.classList.add(`sorted-${next}`);
 
-                // sort or restore
+                // 5) sort or restore original order
                 const tbody = table.querySelector('tbody');
                 let rows = Array.from(tbody.rows);
                 if (next === 'none') {
