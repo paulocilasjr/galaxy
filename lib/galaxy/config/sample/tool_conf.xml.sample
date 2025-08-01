@@ -184,9 +184,9 @@
     <tool file="combined_reporter/combined_reporter.xml" />
   </section>
   <section id="image_learner" name="Image Learner">
-    <tool file="imagelearner/image_learner.xml" />
+    <tool file="gleam/tools/imagelearner/image_learner.xml" />
   </section>
    <section id="tabular_learner" name="Tabular Learner">
-    <tool file="tabularlearner/tabular_learner.xml" />
+    <tool file="gleam/tools/tabularlearner/tabular_learner.xml" />
   </section>
 </toolbox>
