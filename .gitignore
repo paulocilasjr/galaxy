@@ -1,3 +1,5 @@
+./tools/gleam
+
 .hg*
 
 # Downloaded and locally built eggs
