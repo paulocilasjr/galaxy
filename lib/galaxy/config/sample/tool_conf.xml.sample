@@ -177,8 +177,8 @@
   <section id="tiling" name="Tiling images">
     <tool file="tiling/tiling_pyhist.xml" />
   </section>
-  <section id="multimodar_learner" name="Multimodal Learner">
-    <tool file="multimodal_learner/multimodal_learner.xml" />
+  <section id="multimodal_learner" name="Multimodal Learner">
+    <tool file="gleam/tools/multimodallearner/multimodal_learner.xml" />
   </section>
   <section id="combined_reporter" name="Combined Reporter">
     <tool file="combined_reporter/combined_reporter.xml" />

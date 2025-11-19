@@ -236,23 +236,101 @@
         </collection>
     </outputs>
     <tests>
+        <!-- Test 1: Basic multiclass classification with default settings -->
         <test expect_num_outputs="3">
             <param name="input_csv" value="mnist_subset.csv" ftype="csv" />
             <param name="image_zip" value="mnist_subset.zip" ftype="zip" />
             <param name="model_name" value="resnet18" />
-            <output name="output_report">
+            <output name="output_model" ftype="ludwig_model">
+                <!-- Assert on extra_files_path contents (model files copied by command) -->
+                <extra_files type="directory">
+                    <has_file path="model_weights" />  <!-- Directory for weights -->
+                    <has_file path="model_definition.json" />  <!-- Typical Ludwig JSON -->
+                    <has_file path="training_set_metadata.json" />  <!-- Typical Ludwig JSON -->
+                </extra_files>
+            </output>
+            <output name="output_report" ftype="html">
                 <assert_contents>
+                    <!-- Check for key sections in HTML report -->
                     <has_text text="Results Summary" />
                     <has_text text="Train/Validation Results" />
                     <has_text text="Test Results" />
+                    <has_text text="Confusion Matrix" />  <!-- Common for classification -->
+                    <has_text text="Model and Training Summary" />  <!-- From utils.py -->
                 </assert_contents>
             </output>
-
-            <output_collection name="output_pred_csv" type="list" >
-                <element name="predictions.csv" >
+            <output_collection name="output_pred_csv" type="list" count="10">  <!-- Expect ~10 files: CSVs, JSONs, PNGs -->
+                <element name="predictions.csv" ftype="csv">
                     <assert_contents>
-                        <has_n_columns n="1" />
+                        <!-- Predictions CSV should have at least these columns (from Ludwig typical output) -->
+                        <has_n_columns n="4" why="Expect columns like image_path, label, predictions, probabilities" />
+                        <has_text text="image_path" />  <!-- Header check -->
+                        <has_text text="label" />  <!-- Header check -->
+                        <has_text text="predictions" />  <!-- Header check -->
                     </assert_contents>
+                </element>
+                <element name="test_statistics.json" ftype="json">
+                    <assert_contents>
+                        <!-- JSON should contain expected keys (from Ludwig stats) -->
+                        <has_text text="confusion_matrix" />
+                        <has_text text="accuracy" />
+                    </assert_contents>
+                </element>
+                <element name="learning_curves_label_accuracy.png" ftype="png">
+                    <!-- Just check existence; content validation for images is limited in Galaxy -->
+                    <assert_size min="1000" />  <!-- Ensure it's not empty -->
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 2: Multiclass with custom settings (e.g., no pretrained, augmentation) -->
+        <test expect_num_outputs="3">
+            <param name="input_csv" value="mnist_subset.csv" ftype="csv" />
+            <param name="image_zip" value="mnist_subset.zip" ftype="zip" />
+            <param name="model_name" value="efficientnet_b0" />
+            <param name="use_pretrained" value="false" />
+            <param name="augmentation" value="random_horizontal_flip" />
+            <param name="customize_defaults" value="true" />
+            <param name="epochs" value="5" />
+            <param name="early_stop" value="3" />
+            <output name="output_model" ftype="ludwig_model">
+                <!-- Assert on extra_files_path contents (model files copied by command) -->
+                <extra_files type="directory">
+                    <has_file path="model_weights" />  <!-- Directory for weights -->
+                    <has_file path="model_definition.json" />  <!-- Typical Ludwig JSON -->
+                    <has_file path="training_set_metadata.json" />  <!-- Typical Ludwig JSON -->
+                </extra_files>
+            </output>
+            <output name="output_report" ftype="html">
+                <assert_contents>
+                    <!-- Check for key sections in HTML report, including custom indicators -->
+                    <has_text text="Results Summary" />
+                    <has_text text="Train/Validation Results" />
+                    <has_text text="Test Results" />
+                    <has_text text="Confusion Matrix" />  <!-- Common for classification -->
+                    <has_text text="Use Pretrained: False" />  <!-- From format_config_table_html -->
+                    <has_text text="Augmentation: random_horizontal_flip" />
+                </assert_contents>
+            </output>
+            <output_collection name="output_pred_csv" type="list" count="10">  <!-- Expect ~10 files: CSVs, JSONs, PNGs -->
+                <element name="predictions.csv" ftype="csv">
+                    <assert_contents>
+                        <!-- Predictions CSV should have at least these columns (from Ludwig typical output) -->
+                        <has_n_columns n="4" why="Expect columns like image_path, label, predictions, probabilities" />
+                        <has_text text="image_path" />  <!-- Header check -->
+                        <has_text text="label" />  <!-- Header check -->
+                        <has_text text="predictions" />  <!-- Header check -->
+                    </assert_contents>
+                </element>
+                <element name="test_statistics.json" ftype="json">
+                    <assert_contents>
+                        <!-- JSON should contain expected keys (from Ludwig stats) -->
+                        <has_text text="confusion_matrix" />
+                        <has_text text="accuracy" />
+                    </assert_contents>
+                </element>
+                <element name="learning_curves_label_accuracy.png" ftype="png">
+                    <!-- Just check existence; content validation for images is limited in Galaxy -->
+                    <assert_size min="1000" />  <!-- Ensure it's not empty -->
                 </element>
             </output_collection>
         </test>
