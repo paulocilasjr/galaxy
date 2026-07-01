@@ -9,7 +9,6 @@ from os.path import (
     abspath,
     join,
 )
-from typing import Optional
 
 from galaxy import util
 from galaxy.job_execution.output_collect import default_exit_code_file
@@ -39,7 +38,7 @@ SETUP_GALAXY_FOR_METADATA = """
 def build_command(
     runner: "BaseJobRunner",
     job_wrapper: "MinimalJobWrapper",
-    container: Optional[Container] = None,
+    container: Container | None = None,
     modify_command_for_container: bool = True,
     include_metadata: bool = False,
     include_work_dir_outputs: bool = True,
@@ -113,7 +112,7 @@ def build_command(
     # it should be preferred - at least if the directory exists.
     io_directory = "../metadata" if for_pulsar else "../outputs"
     commands_builder.capture_stdout_stderr(
-        f"{io_directory}/tool_stdout", f"{io_directory}/tool_stderr", stream_stdout_stderr=stream_stdout_stderr
+        join(io_directory, "tool_stdout"), join(io_directory, "tool_stderr"), stream_stdout_stderr=stream_stdout_stderr
     )
 
     # Don't need to create a separate tool working directory for Pulsar
@@ -166,7 +165,7 @@ def __externalize_commands(
     commands_builder,
     remote_command_params,
     script_name="tool_script.sh",
-    container: Optional[Container] = None,
+    container: Container | None = None,
 ):
     local_container_script = join(job_wrapper.working_directory, script_name)
     tool_commands = commands_builder.build()
@@ -288,13 +287,17 @@ def __handle_metadata(
 
 def __copy_if_exists_command(work_dir_output):
     source_file, destination = work_dir_output
+    is_directory = True if destination.endswith("_files") else False
+    test_flag = "-d" if is_directory else "-f"
+    recursive_flag = " -r" if is_directory else ""
+    delete_destination_dir = f" rmdir {destination}; " if is_directory else ""
     if "?" in source_file or "*" in source_file:
         source_file = source_file.replace("*", '"*"').replace("?", '"?"')
     # Check if source and destination exist.
     # Users can purge outputs before the job completes,
     # in that case we don't want to copy the output to a purged path.
     # Static, non work_dir_output files are handled in job_finish code.
-    return f'\nif [ -f "{source_file}" -a -f "{destination}" ] ; then cp "{source_file}" "{destination}" ; fi'
+    return f'\nif [ {test_flag} "{source_file}" -a {test_flag} "{destination}" ] ; then{delete_destination_dir} cp{recursive_flag} "{source_file}" "{destination}" ; fi'
 
 
 class CommandsBuilder:

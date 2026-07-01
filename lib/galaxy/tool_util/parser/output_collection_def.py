@@ -3,10 +3,6 @@ dataset collection after jobs are finished.
 """
 
 import abc
-from typing import (
-    List,
-    Optional,
-)
 
 from galaxy.tool_util_models.tool_outputs import (
     DatasetCollectionDescriptionT,
@@ -95,10 +91,10 @@ def dataset_collection_description(**kwargs):
 
 class DatasetCollectionDescription(metaclass=abc.ABCMeta):
     discover_via: DiscoverViaT
-    default_ext: Optional[str]
+    default_ext: str | None
     default_visible: bool
     assign_primary_output: bool
-    directory: Optional[str]
+    directory: str | None
     recurse: bool
     match_relative_path: bool
 
@@ -132,7 +128,7 @@ class DatasetCollectionDescription(metaclass=abc.ABCMeta):
         return self.to_model().model_dump()
 
     @property
-    def discover_patterns(self) -> List[str]:
+    def discover_patterns(self) -> list[str]:
         return []
 
 
@@ -140,9 +136,10 @@ class ToolProvidedMetadataDatasetCollection(DatasetCollectionDescription):
     discover_via = "tool_provided_metadata"
 
     def to_model(self) -> ToolProvidedMetadataDatasetCollectionModel:
+        # ``dbkey`` is not part of the pydantic discovery model (it was silently
+        # dropped before; the model now forbids extras), so don't pass it.
         return ToolProvidedMetadataDatasetCollectionModel(
             discover_via=self.discover_via,
-            dbkey=self.default_dbkey,
             format=self.default_ext,
             visible=self.default_visible,
             assign_primary_output=self.assign_primary_output,
@@ -159,6 +156,7 @@ class FilePatternDatasetCollectionDescription(DatasetCollectionDescription):
     discover_via = "pattern"
     sort_key: SortKeyT
     sort_comp: SortCompT
+    sort_reverse: bool
     pattern: str
 
     def __init__(self, **kwargs):
@@ -169,25 +167,32 @@ class FilePatternDatasetCollectionDescription(DatasetCollectionDescription):
         if pattern in NAMED_PATTERNS:
             pattern = NAMED_PATTERNS[pattern]
         self.pattern = pattern
-        self.sort_by = sort_by = kwargs.get("sort_by", DEFAULT_SORT_BY)
-        if sort_by.startswith("reverse_"):
-            self.sort_reverse = True
-            sort_by = sort_by[len("reverse_") :]
+        if "sort_by" not in kwargs and "sort_key" in kwargs and "sort_comp" in kwargs and "sort_reverse" in kwargs:
+            self.sort_reverse = kwargs["sort_reverse"]
+            self.sort_comp = kwargs["sort_comp"]
+            self.sort_key = kwargs["sort_key"]
         else:
-            self.sort_reverse = False
-        if "_" in sort_by:
-            sort_comp, sort_by = sort_by.split("_", 1)
-            assert sort_comp in ["lexical", "numeric"]
-        else:
-            sort_comp = DEFAULT_SORT_COMP
-        assert sort_by in ["filename", "name", "designation", "dbkey"]
-        self.sort_key = sort_by
-        self.sort_comp = sort_comp
+            self.sort_by = sort_by = kwargs.get("sort_by", DEFAULT_SORT_BY)
+            if sort_by.startswith("reverse_"):
+                self.sort_reverse = True
+                sort_by = sort_by[len("reverse_") :]
+            else:
+                self.sort_reverse = False
+            if "_" in sort_by:
+                sort_comp, sort_by = sort_by.split("_", 1)
+                assert sort_comp in ["lexical", "numeric"]
+            else:
+                sort_comp = DEFAULT_SORT_COMP
+            assert sort_by in ["filename", "name", "designation", "dbkey"]
+            self.sort_key = sort_by
+            self.sort_comp = sort_comp
 
     def to_model(self) -> FilePatternDatasetCollectionDescriptionModel:
+        # ``dbkey`` and ``sort_by`` are not fields on the pydantic model (sort info is
+        # carried by sort_key/sort_comp/sort_reverse); they were silently dropped
+        # before and the model now forbids extras, so don't pass them.
         return FilePatternDatasetCollectionDescriptionModel(
             discover_via=self.discover_via,
-            dbkey=self.default_dbkey,
             format=self.default_ext,
             visible=self.default_visible,
             assign_primary_output=self.assign_primary_output,
@@ -197,11 +202,11 @@ class FilePatternDatasetCollectionDescription(DatasetCollectionDescription):
             sort_key=self.sort_key,
             sort_comp=self.sort_comp,
             pattern=self.pattern,
-            sort_by=self.sort_by,
+            sort_reverse=self.sort_reverse,
         )
 
     @property
-    def discover_patterns(self) -> List[str]:
+    def discover_patterns(self) -> list[str]:
         return [self.pattern]
 
 

@@ -3,11 +3,124 @@ History
 
 .. to_doc
 
----------
-25.0.dev0
----------
+-------
+26.1rc1
+-------
 
 
+
+-------------------
+26.0.1 (2026-06-04)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Add debug middleware and regression tests for blocked main event loop by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22207 <https://github.com/galaxyproject/galaxy/pull/22207>`_
+
+-------------------
+26.0.0 (2026-04-08)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Fix WSGI middlewares returning strings by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22108 <https://github.com/galaxyproject/galaxy/pull/22108>`_
+* Delete dummy error controller, fix type error on invalid requests by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22245 <https://github.com/galaxyproject/galaxy/pull/22245>`_
+* Fail early wehn no route match is found by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22284 <https://github.com/galaxyproject/galaxy/pull/22284>`_
+* Harden API parameter validation by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22351 <https://github.com/galaxyproject/galaxy/pull/22351>`_
+
+============
+Enhancements
+============
+
+* Remove Reports Application by `@guerler <https://github.com/guerler>`_ in `#21076 <https://github.com/galaxyproject/galaxy/pull/21076>`_
+* Replace Webpack with Vite for client build by `@dannon <https://github.com/dannon>`_ in `#21369 <https://github.com/galaxyproject/galaxy/pull/21369>`_
+* Drop support for Python 3.9 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#21583 <https://github.com/galaxyproject/galaxy/pull/21583>`_
+* Apply 2026 black style by `@galaxybot <https://github.com/galaxybot>`_ in `#21618 <https://github.com/galaxyproject/galaxy/pull/21618>`_
+
+-------------------
+25.1.2 (2026-03-09)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.1 (2026-02-03)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.0 (2025-12-12)
+-------------------
+
+
+============
+Enhancements
+============
+
+* Update Javascript package licenses to MIT by `@mr-c <https://github.com/mr-c>`_ in `#20264 <https://github.com/galaxyproject/galaxy/pull/20264>`_
+* Type annotation fixes for mypy 1.16.0 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#20424 <https://github.com/galaxyproject/galaxy/pull/20424>`_
+* Clean up code from pyupgrade by `@nsoranzo <https://github.com/nsoranzo>`_ in `#20642 <https://github.com/galaxyproject/galaxy/pull/20642>`_
+
+-------------------
+25.0.4 (2025-11-18)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.3 (2025-09-23)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.2 (2025-08-13)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.1 (2025-06-20)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.0 (2025-06-18)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Use ``resource_path()`` to access datatypes_conf.xml.sample as a package resource by `@nsoranzo <https://github.com/nsoranzo>`_ in `#19331 <https://github.com/galaxyproject/galaxy/pull/19331>`_
+
+============
+Enhancements
+============
+
+* Fix UP031 errors - Part 3 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#19218 <https://github.com/galaxyproject/galaxy/pull/19218>`_
+* Update Python dependencies by `@galaxybot <https://github.com/galaxybot>`_ in `#19929 <https://github.com/galaxyproject/galaxy/pull/19929>`_
+* Implement dataset collection support in workflow landing requests by `@mvdbeek <https://github.com/mvdbeek>`_ in `#20004 <https://github.com/galaxyproject/galaxy/pull/20004>`_
+
+-------------------
+24.2.4 (2025-06-17)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Fix default ordering of items sorted by name by `@jdavcs <https://github.com/jdavcs>`_ in `#19853 <https://github.com/galaxyproject/galaxy/pull/19853>`_
 
 -------------------
 24.2.3 (2025-03-16)

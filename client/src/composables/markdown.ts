@@ -1,5 +1,5 @@
 import MarkdownIt from "markdown-it";
-import type Token from "markdown-it/lib/token";
+import type Token from "markdown-it/lib/token.mjs";
 import { readonly } from "vue";
 
 /**
@@ -66,6 +66,16 @@ function addRuleHeadingIncreaseLevel(engine: MarkdownIt, increaseBy: number) {
         }
 
         return defaultClose(tokens, idx, options, env, self);
+    };
+}
+
+function addRuleNoMargin(engine: MarkdownIt) {
+    engine.renderer.rules.paragraph_open = function (tokens, idx, options, env, self) {
+        const token = tokens[idx];
+        if (token) {
+            token.attrPush(["style", "margin:0"]);
+        }
+        return self.renderToken(tokens, idx, options);
     };
 }
 
@@ -138,6 +148,7 @@ interface UseMarkdownOptions {
     openLinksInNewPage?: boolean;
     increaseHeadingLevelBy?: number;
     removeNewlinesAfterList?: boolean;
+    noMargin?: boolean;
 }
 
 type RawMarkdown = string;
@@ -153,6 +164,10 @@ export function useMarkdown(options: UseMarkdownOptions = {}) {
 
     if (options.increaseHeadingLevelBy) {
         addRuleHeadingIncreaseLevel(mdEngine, options.increaseHeadingLevelBy);
+    }
+
+    if (options.noMargin) {
+        addRuleNoMargin(mdEngine);
     }
 
     if (options.removeNewlinesAfterList) {

@@ -7,11 +7,8 @@ import json
 import logging
 import re
 from typing import (
+    Annotated,
     Any,
-    Dict,
-    List,
-    Optional,
-    Union,
 )
 
 from fastapi import (
@@ -22,7 +19,6 @@ from fastapi import (
     status,
 )
 from markupsafe import escape
-from typing_extensions import Annotated
 
 from galaxy import (
     exceptions,
@@ -34,12 +30,12 @@ from galaxy.managers.context import (
     ProvidesHistoryContext,
     ProvidesUserContext,
 )
+from galaxy.managers.favorites import FavoritesManager
 from galaxy.model import (
     Dataset,
     FormDefinition,
     FormValues,
     HistoryDatasetAssociation,
-    Job,
     Role,
     User,
     UserAddress,
@@ -59,6 +55,7 @@ from galaxy.schema.schema import (
     FavoriteObject,
     FavoriteObjectsSummary,
     FavoriteObjectType,
+    FavoriteOrderPayload,
     FlexibleUserIdType,
     MaybeLimitedUserModel,
     RemoteUserCreationPayload,
@@ -94,6 +91,7 @@ from galaxy.webapps.galaxy.api import (
 )
 from galaxy.webapps.galaxy.api.common import UserIdPathParam
 from galaxy.webapps.galaxy.services.users import UsersService
+from galaxy.work.context import SessionRequestContext
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +121,7 @@ ObjectIDPathParam: str = Path(
     title="Object ID",
     description="The ID of an object the user wants to remove from favorites",
 )
+FavoriteOrderBody: FavoriteOrderPayload = Body(...)
 CustomBuildKeyPathParam: str = Path(
     default=...,
     title="Custom build key",
@@ -149,13 +148,14 @@ CustomBuildCreationBody = Body(
     default=..., title="Add custom build", description="The values to add a new custom build."
 )
 UserCreationBody = Body(default=..., title="Create User", description="The values to add create a user.")
-AnyUserModel = Union[DetailedUserModel, AnonUserModel]
+AnyUserModel = DetailedUserModel | AnonUserModel
 
 
 @router.cbv
 class FastAPIUsers:
     service: UsersService = depends(UsersService)
     user_serializer: users.UserSerializer = depends(users.UserSerializer)
+    favorites_manager: FavoritesManager = depends(FavoritesManager)
 
     @router.put(
         "/api/users/current/recalculate_disk_usage",
@@ -170,7 +170,7 @@ class FastAPIUsers:
     )
     def recalculate_disk_usage(
         self,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: SessionRequestContext = DependsOnTrans,
     ):
         """This route will be removed in a future version.
 
@@ -192,7 +192,7 @@ class FastAPIUsers:
     def recalculate_disk_usage_by_user_id(
         self,
         user_id: UserIdPathParam,
-        trans: ProvidesUserContext = DependsOnTrans,
+        trans: SessionRequestContext = DependsOnTrans,
     ):
         result = self.service.recalculate_disk_usage(trans, user_id)
         return Response(status_code=status.HTTP_204_NO_CONTENT) if result is None else result
@@ -205,10 +205,10 @@ class FastAPIUsers:
     def index_deleted(
         self,
         trans: ProvidesUserContext = DependsOnTrans,
-        f_email: Optional[str] = FilterEmailQueryParam,
-        f_name: Optional[str] = FilterNameQueryParam,
-        f_any: Optional[str] = FilterAnyQueryParam,
-    ) -> List[MaybeLimitedUserModel]:
+        f_email: str | None = FilterEmailQueryParam,
+        f_name: str | None = FilterNameQueryParam,
+        f_any: str | None = FilterAnyQueryParam,
+    ) -> list[MaybeLimitedUserModel]:
         return self.service.get_index(trans=trans, deleted=True, f_email=f_email, f_name=f_name, f_any=f_any)
 
     @router.post(
@@ -303,7 +303,7 @@ class FastAPIUsers:
         self,
         trans: ProvidesUserContext = DependsOnTrans,
         user_id: FlexibleUserIdType = FlexibleUserIdPathParam,
-    ) -> List[UserQuotaUsage]:
+    ) -> list[UserQuotaUsage]:
         if user := self.service.get_user_full(trans, user_id, False):
             rval = self.user_serializer.serialize_disk_usage(user)
             return rval
@@ -319,7 +319,7 @@ class FastAPIUsers:
         self,
         trans: ProvidesUserContext = DependsOnTrans,
         user_id: FlexibleUserIdType = FlexibleUserIdPathParam,
-    ) -> List[UserObjectstoreUsage]:
+    ) -> list[UserObjectstoreUsage]:
         if user := self.service.get_user_full(trans, user_id, False):
             return user.dictify_objectstore_usage()
         else:
@@ -335,8 +335,8 @@ class FastAPIUsers:
         trans: ProvidesUserContext = DependsOnTrans,
         user_id: FlexibleUserIdType = FlexibleUserIdPathParam,
         label: str = QuotaSourceLabelPathParam,
-    ) -> Optional[UserQuotaUsage]:
-        effective_label: Optional[str] = label
+    ) -> UserQuotaUsage | None:
+        effective_label: str | None = label
         if label == "__null__":
             effective_label = None
         if user := self.service.get_user_full(trans, user_id, False):
@@ -349,15 +349,14 @@ class FastAPIUsers:
         "/api/users/{user_id}/beacon",
         name="get_beacon_settings",
         summary="Return information about beacon share settings",
+        unstable=True,
     )
     def get_beacon(
         self,
         user_id: UserIdPathParam,
         trans: ProvidesUserContext = DependsOnTrans,
     ) -> UserBeaconSetting:
-        """
-        **Warning**: This endpoint is experimental and might change or disappear in future versions.
-        """
+        """Return information about beacon share settings."""
         user = self.service.get_user(trans, user_id)
 
         enabled = user.preferences["beacon_enabled"] if "beacon_enabled" in user.preferences else False
@@ -368,6 +367,7 @@ class FastAPIUsers:
         "/api/users/{user_id}/beacon",
         name="set_beacon_settings",
         summary="Change beacon setting",
+        unstable=True,
     )
     def set_beacon(
         self,
@@ -375,9 +375,7 @@ class FastAPIUsers:
         trans: ProvidesUserContext = DependsOnTrans,
         payload: UserBeaconSetting = Body(...),
     ) -> UserBeaconSetting:
-        """
-        **Warning**: This endpoint is experimental and might change or disappear in future versions.
-        """
+        """Change beacon setting."""
         user = self.service.get_user(trans, user_id)
 
         user.preferences["beacon_enabled"] = payload.enabled
@@ -398,16 +396,22 @@ class FastAPIUsers:
         object_id: str = ObjectIDPathParam,
     ) -> FavoriteObjectsSummary:
         user = self.service.get_user(trans, user_id)
-        favorites = json.loads(user.preferences["favorites"]) if "favorites" in user.preferences else {}
-        if object_type.value == "tools":
-            favorite_tools = favorites.get("tools", [])
-            if object_id in favorite_tools:
-                del favorite_tools[favorite_tools.index(object_id)]
-                favorites["tools"] = favorite_tools
-                user.preferences["favorites"] = json.dumps(favorites)
-                trans.sa_session.commit()
-            else:
-                raise exceptions.ObjectNotFound("Given object is not in the list of favorites")
+        favorites = self.favorites_manager.remove(trans, user, object_type, object_id)
+        return FavoriteObjectsSummary.model_validate(favorites)
+
+    @router.put(
+        "/api/users/{user_id}/favorites/order",
+        name="set_favorite_order",
+        summary="Persist the order of the user's favorites",
+    )
+    def set_favorite_order(
+        self,
+        user_id: UserIdPathParam,
+        trans: ProvidesUserContext = DependsOnTrans,
+        payload: FavoriteOrderPayload = FavoriteOrderBody,
+    ) -> FavoriteObjectsSummary:
+        user = self.service.get_user(trans, user_id)
+        favorites = self.favorites_manager.set_order(trans, user, payload)
         return FavoriteObjectsSummary.model_validate(favorites)
 
     @router.put(
@@ -423,20 +427,7 @@ class FastAPIUsers:
         payload: FavoriteObject = FavoriteObjectBody,
     ) -> FavoriteObjectsSummary:
         user = self.service.get_user(trans, user_id)
-        favorites = json.loads(user.preferences["favorites"]) if "favorites" in user.preferences else {}
-        if object_type.value == "tools":
-            tool_id = payload.object_id
-            tool = trans.app.toolbox.get_tool(tool_id)
-            if not tool:
-                raise exceptions.ObjectNotFound(f"Could not find tool with id '{tool_id}'.")
-            if not tool.allow_user_access(user):
-                raise exceptions.AuthenticationFailed(f"Access denied for tool with id '{tool_id}'.")
-            favorite_tools = favorites.get("tools", [])
-            if tool_id not in favorite_tools:
-                favorite_tools.append(tool_id)
-                favorites["tools"] = favorite_tools
-                user.preferences["favorites"] = json.dumps(favorites)
-                trans.sa_session.commit()
+        favorites = self.favorites_manager.add(trans, user, object_type, payload.object_id)
         return FavoriteObjectsSummary.model_validate(favorites)
 
     @router.put(
@@ -482,14 +473,14 @@ class FastAPIUsers:
             )
         else:
             # Have everything needed; create new build.
-            build_dict: Dict[str, Any] = {"name": name}
+            build_dict: dict[str, Any] = {"name": name}
             if len_type in ["text", "file"]:
                 # Create new len file
                 new_len = HistoryDatasetAssociation(extension="len", create_dataset=True, sa_session=trans.sa_session)
                 trans.sa_session.add(new_len)
                 new_len.name = name
                 new_len.visible = False
-                new_len.state = Job.states.OK
+                new_len.state = Dataset.states.OK
                 new_len.info = "custom build .len file"
                 try:
                     trans.app.object_store.create(new_len.dataset)
@@ -595,11 +586,12 @@ class FastAPIUsers:
         "/api/users",
         name="create_user",
         summary="Create a new Galaxy user. Only admins can create users for now.",
+        require_admin=True,
     )
     def create(
         self,
         trans: ProvidesUserContext = DependsOnTrans,
-        payload: Union[UserCreationPayload, RemoteUserCreationPayload] = UserCreationBody,
+        payload: UserCreationPayload | RemoteUserCreationPayload = UserCreationBody,
     ) -> CreatedUserModel:
         if isinstance(payload, UserCreationPayload):
             email = payload.email
@@ -609,7 +601,7 @@ class FastAPIUsers:
             email = payload.remote_user_email
             username = ""
             password = ""
-        if not trans.app.config.allow_user_creation and not trans.user_is_admin:
+        if not trans.app.config.allow_local_account_creation and not trans.user_is_admin:
             raise exceptions.ConfigDoesNotAllowException("User creation is not allowed in this Galaxy instance")
         if trans.app.config.use_remote_user and trans.user_is_admin:
             user = self.service.user_manager.get_or_create_remote_user(remote_user_email=email)
@@ -640,11 +632,15 @@ class FastAPIUsers:
         self,
         trans: ProvidesUserContext = DependsOnTrans,
         deleted: bool = UsersDeletedQueryParam,
-        f_email: Optional[str] = FilterEmailQueryParam,
-        f_name: Optional[str] = FilterNameQueryParam,
-        f_any: Optional[str] = FilterAnyQueryParam,
-    ) -> List[MaybeLimitedUserModel]:
-        return self.service.get_index(trans=trans, deleted=deleted, f_email=f_email, f_name=f_name, f_any=f_any)
+        f_email: str | None = FilterEmailQueryParam,
+        f_name: str | None = FilterNameQueryParam,
+        f_any: str | None = FilterAnyQueryParam,
+        limit: int | None = Query(default=None, ge=1, title="Limit", description="Maximum number of users to return."),
+        offset: int | None = Query(default=0, ge=0, title="Offset", description="Number of users to skip."),
+    ) -> list[MaybeLimitedUserModel]:
+        return self.service.get_index(
+            trans=trans, deleted=deleted, f_email=f_email, f_name=f_name, f_any=f_any, limit=limit, offset=offset
+        )
 
     @router.get(
         "/api/users/{user_id}",
@@ -655,7 +651,7 @@ class FastAPIUsers:
         self,
         trans: ProvidesHistoryContext = DependsOnTrans,
         user_id: FlexibleUserIdType = FlexibleUserIdPathParam,
-        deleted: Optional[bool] = UserDeletedQueryParam,
+        deleted: bool | None = UserDeletedQueryParam,
     ) -> AnyUserModel:
         user_deleted = deleted or False
         return self.service.show_user(trans=trans, user_id=user_id, deleted=user_deleted)
@@ -668,7 +664,7 @@ class FastAPIUsers:
         trans: ProvidesUserContext = DependsOnTrans,
         user_id: FlexibleUserIdType = FlexibleUserIdPathParam,
         payload: UserUpdatePayload = UserUpdateBody,
-        deleted: Optional[bool] = UserDeletedQueryParam,
+        deleted: bool | None = UserDeletedQueryParam,
     ) -> DetailedUserModel:
         deleted = deleted or False
         current_user = trans.user
@@ -693,7 +689,7 @@ class FastAPIUsers:
                 description="Whether to definitely remove this user. Only deleted users can be purged.",
             ),
         ] = False,
-        payload: Optional[UserDeletionPayload] = None,
+        payload: UserDeletionPayload | None = None,
     ) -> DetailedUserModel:
         user_to_update = self.service.user_manager.by_id(user_id)
         assert user_to_update is not None
@@ -821,7 +817,12 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
             "username": username,
         }
         is_galaxy_app = trans.webapp.name == "galaxy"
-        if (trans.app.config.enable_account_interface and not trans.app.config.use_remote_user) or not is_galaxy_app:
+        allow_profile_edit = (
+            trans.app.config.enable_account_interface
+            and not trans.app.config.use_remote_user
+            and not trans.app.config.disable_local_accounts
+        )
+        if allow_profile_edit or not is_galaxy_app:
             inputs.append(
                 {
                     "id": "email_input",
@@ -837,7 +838,7 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
                 }
             )
         if is_galaxy_app:
-            if trans.app.config.enable_account_interface and not trans.app.config.use_remote_user:
+            if allow_profile_edit:
                 inputs.append(
                     {
                         "id": "name_input",
@@ -944,36 +945,17 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
         # Update email
         if "email" in payload:
             email = payload.get("email")
-            message = validate_email(trans, email, user)
-            if message:
-                raise exceptions.RequestParameterInvalidException(message)
-            if user.email != email:
-                # Update user email and user's private role name which must match
-                private_role = trans.app.security_agent.get_private_user_role(user)
-                private_role.name = email
-                private_role.description = f"Private role for {email}"
-                user.email = email
-                trans.sa_session.add(user)
-                trans.sa_session.add(private_role)
-                trans.sa_session.commit()
-                if trans.app.config.user_activation_on:
-                    # Deactivate the user if email was changed and activation is on.
-                    user.active = False
-                    if self.user_manager.send_activation_email(trans, user.email, user.username):
-                        message = "The login information has been updated with the changes.<br>Verification email has been sent to your new email address. Please verify it by clicking the activation link in the email.<br>Please check your spam/trash folder in case you cannot find the message."
-                    else:
-                        message = "Unable to send activation email, please contact your local Galaxy administrator."
-                        if trans.app.config.error_email_to is not None:
-                            message += f" Contact: {trans.app.config.error_email_to}"
-                        raise exceptions.InternalServerError(message)
+            self.user_manager.update_email(
+                trans,
+                user,
+                email,
+                commit=False,
+                send_activation_email=True,  # commit at the end of the handler
+            )
         # Update public name
         if "username" in payload:
             username = payload.get("username")
-            message = validate_publicname(trans, username, user)
-            if message:
-                raise exceptions.RequestParameterInvalidException(message)
-            if user.username != username:
-                user.username = username
+            self.user_manager.update_username(trans, user, username, commit=False)
         # Update user custom form
         if user_info_form_id := payload.get("info|form_id"):
             prefix = "info|"
@@ -1092,9 +1074,11 @@ class UserAPIController(BaseGalaxyAPIController, UsesTagsMixin, BaseUIController
         user = self._get_user(trans, id)
 
         def get_role_tuples():
-            private_role_emails = get_private_role_user_emails_dict(trans.sa_session)
+            roles = user.all_roles()
+            role_ids = {r.id for r in roles}
+            private_role_emails = get_private_role_user_emails_dict(trans.sa_session, role_ids=role_ids)
             role_tuples = set()
-            for role in user.all_roles():
+            for role in roles:
                 displayed_name = private_role_emails.get(role.id, role.name)
                 role_tuples.add((displayed_name, role.id))
             return list(role_tuples)

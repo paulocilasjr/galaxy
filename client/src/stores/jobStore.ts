@@ -7,20 +7,20 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 
 import { GalaxyApi } from "@/api";
-import type { ResponseVal, ShowFullJobResponse } from "@/api/jobs";
+import { type ResponseVal, type ShowFullJobResponse, TERMINAL_STATES } from "@/api/jobs";
 import { type FetchParams, useKeyedCache } from "@/composables/keyedCache";
-import { rethrowSimple } from "@/utils/simple-error";
+import { rethrowSimpleWithStatus } from "@/utils/simple-error";
 
 export const useJobStore = defineStore("jobStore", () => {
     const latestResponse = ref<ResponseVal | null>(null);
 
     async function fetchJobById(params: FetchParams): Promise<ShowFullJobResponse> {
-        const { data, error } = await GalaxyApi().GET("/api/jobs/{job_id}", {
+        const { data, error, response } = await GalaxyApi().GET("/api/jobs/{job_id}", {
             params: { path: { job_id: params.id } },
             query: { full: true },
         });
         if (error) {
-            rethrowSimple(error);
+            rethrowSimpleWithStatus(error, response);
         }
         return data;
     }
@@ -36,6 +36,25 @@ export const useJobStore = defineStore("jobStore", () => {
         isLoadingItem: isLoadingJob,
     } = useKeyedCache<ShowFullJobResponse>(fetchJobById);
 
+    function pollJobUntilTerminal(params: FetchParams) {
+        function poll() {
+            fetchJob(params);
+            setTimeout(pollJobUntilTerminal, 1000, params);
+        }
+
+        const job = getJob.value(params.id);
+        if (job) {
+            const jobState = job.state;
+            if (TERMINAL_STATES.indexOf(jobState) !== -1) {
+                return;
+            } else {
+                poll();
+            }
+        } else {
+            poll();
+        }
+    }
+
     return {
         fetchJob,
         saveLatestResponse,
@@ -43,5 +62,6 @@ export const useJobStore = defineStore("jobStore", () => {
         getJobLoadError,
         isLoadingJob,
         latestResponse,
+        pollJobUntilTerminal,
     };
 });

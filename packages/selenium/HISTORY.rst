@@ -3,11 +3,158 @@ History
 
 .. to_doc
 
----------
-25.0.dev0
----------
+-------
+26.1rc1
+-------
 
 
+
+-------------------
+26.0.1 (2026-06-04)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Fix testing, publishing and dependencies of packages by `@nsoranzo <https://github.com/nsoranzo>`_ in `#22445 <https://github.com/galaxyproject/galaxy/pull/22445>`_
+* Preserve falsy workflow parameter values on workflow rerun by `@mvdbeek <https://github.com/mvdbeek>`_ in `#22601 <https://github.com/galaxyproject/galaxy/pull/22601>`_
+
+-------------------
+26.0.0 (2026-04-08)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Attempt to fix transiently failing tests that click this tab. by `@jmchilton <https://github.com/jmchilton>`_ in `#21376 <https://github.com/galaxyproject/galaxy/pull/21376>`_
+* Fix selenium test test_rename_history by `@davelopez <https://github.com/davelopez>`_ in `#21835 <https://github.com/galaxyproject/galaxy/pull/21835>`_
+
+============
+Enhancements
+============
+
+* Replace Copy Dataset Mako with Vue Component by `@guerler <https://github.com/guerler>`_ in `#17507 <https://github.com/galaxyproject/galaxy/pull/17507>`_
+* Selenium test cases for IGV. by `@jmchilton <https://github.com/jmchilton>`_ in `#21034 <https://github.com/galaxyproject/galaxy/pull/21034>`_
+* Selenium test for #20886 (sharing private histories) by `@jmchilton <https://github.com/jmchilton>`_ in `#21040 <https://github.com/galaxyproject/galaxy/pull/21040>`_
+* Remove jquery from legacy onload helpers and Rule Builder by `@guerler <https://github.com/guerler>`_ in `#21063 <https://github.com/galaxyproject/galaxy/pull/21063>`_
+* Add Playwright Backend Support to Galaxy Browser Automation Framework by `@jmchilton <https://github.com/jmchilton>`_ in `#21102 <https://github.com/galaxyproject/galaxy/pull/21102>`_
+* Implement workflow completion monitoring with extensible hooks by `@mvdbeek <https://github.com/mvdbeek>`_ in `#21532 <https://github.com/galaxyproject/galaxy/pull/21532>`_
+* Clean up code with pyupgrade by `@nsoranzo <https://github.com/nsoranzo>`_ in `#21540 <https://github.com/galaxyproject/galaxy/pull/21540>`_
+* Drop support for Python 3.9 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#21583 <https://github.com/galaxyproject/galaxy/pull/21583>`_
+
+-------------------
+25.1.2 (2026-03-09)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.1 (2026-02-03)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Usability fixes for sample sheet selection.  by `@jmchilton <https://github.com/jmchilton>`_ in `#21503 <https://github.com/galaxyproject/galaxy/pull/21503>`_
+
+-------------------
+25.1.0 (2025-12-12)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Fix transient selenium error when adding collection input. by `@jmchilton <https://github.com/jmchilton>`_ in `#20460 <https://github.com/galaxyproject/galaxy/pull/20460>`_
+
+============
+Enhancements
+============
+
+* Implement Sample Sheets  by `@jmchilton <https://github.com/jmchilton>`_ in `#19305 <https://github.com/galaxyproject/galaxy/pull/19305>`_
+* Refactor Object Store Selection Modals UI by `@itisAliRH <https://github.com/itisAliRH>`_ in `#19697 <https://github.com/galaxyproject/galaxy/pull/19697>`_
+* Selenium tests for various 24.2 features. by `@jmchilton <https://github.com/jmchilton>`_ in `#20215 <https://github.com/galaxyproject/galaxy/pull/20215>`_
+* Split Login and Register, enable OIDC Registration. by `@uwwint <https://github.com/uwwint>`_ in `#20287 <https://github.com/galaxyproject/galaxy/pull/20287>`_
+* Add short term storage expiration indicator to history items by `@davelopez <https://github.com/davelopez>`_ in `#20332 <https://github.com/galaxyproject/galaxy/pull/20332>`_
+* Type annotation fixes for mypy 1.16.0 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#20424 <https://github.com/galaxyproject/galaxy/pull/20424>`_
+* Clean up code from pyupgrade by `@nsoranzo <https://github.com/nsoranzo>`_ in `#20642 <https://github.com/galaxyproject/galaxy/pull/20642>`_
+* New History List Using GCard by `@itisAliRH <https://github.com/itisAliRH>`_ in `#20744 <https://github.com/galaxyproject/galaxy/pull/20744>`_
+
+-------------------
+25.0.4 (2025-11-18)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.3 (2025-09-23)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.2 (2025-08-13)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.1 (2025-06-20)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.0 (2025-06-18)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Revise consistently failing edam tool panel view test. by `@jmchilton <https://github.com/jmchilton>`_ in `#19762 <https://github.com/galaxyproject/galaxy/pull/19762>`_
+* Wait for Gbutton to become enabled by `@mvdbeek <https://github.com/mvdbeek>`_ in `#20131 <https://github.com/galaxyproject/galaxy/pull/20131>`_
+* Fix workflow bookmark filtering by `@davelopez <https://github.com/davelopez>`_ in `#20325 <https://github.com/galaxyproject/galaxy/pull/20325>`_
+
+============
+Enhancements
+============
+
+* Workflow Editor Activity Bar by `@ElectronicBlueberry <https://github.com/ElectronicBlueberry>`_ in `#18729 <https://github.com/galaxyproject/galaxy/pull/18729>`_
+* Fix UP031 errors - Part 4 by `@nsoranzo <https://github.com/nsoranzo>`_ in `#19235 <https://github.com/galaxyproject/galaxy/pull/19235>`_
+* Workflow Run Form Enhancements by `@ahmedhamidawan <https://github.com/ahmedhamidawan>`_ in `#19294 <https://github.com/galaxyproject/galaxy/pull/19294>`_
+* Empower Users to Build More Kinds of Collections, More Intelligently by `@jmchilton <https://github.com/jmchilton>`_ in `#19377 <https://github.com/galaxyproject/galaxy/pull/19377>`_
+* Click to edit history name in `HistoryPanel` by `@ahmedhamidawan <https://github.com/ahmedhamidawan>`_ in `#19665 <https://github.com/galaxyproject/galaxy/pull/19665>`_
+* Fix Tours and add tooltips to history items by `@guerler <https://github.com/guerler>`_ in `#19734 <https://github.com/galaxyproject/galaxy/pull/19734>`_
+* Introduce reusable GCard component for unified card layout by `@itisAliRH <https://github.com/itisAliRH>`_ in `#19785 <https://github.com/galaxyproject/galaxy/pull/19785>`_
+* Add history sharing and accessibility management view by `@ahmedhamidawan <https://github.com/ahmedhamidawan>`_ in `#19786 <https://github.com/galaxyproject/galaxy/pull/19786>`_
+* Replace backend-based page creation controller endpoint by `@guerler <https://github.com/guerler>`_ in `#19914 <https://github.com/galaxyproject/galaxy/pull/19914>`_
+* Implement dataset collection support in workflow landing requests by `@mvdbeek <https://github.com/mvdbeek>`_ in `#20004 <https://github.com/galaxyproject/galaxy/pull/20004>`_
+* Add ZIP explorer to import individual files from local or remote ZIP archives by `@davelopez <https://github.com/davelopez>`_ in `#20054 <https://github.com/galaxyproject/galaxy/pull/20054>`_
+* Client refactorings ahead of #19377.   by `@jmchilton <https://github.com/jmchilton>`_ in `#20059 <https://github.com/galaxyproject/galaxy/pull/20059>`_
+* Revise transiently failing data source test. by `@jmchilton <https://github.com/jmchilton>`_ in `#20157 <https://github.com/galaxyproject/galaxy/pull/20157>`_
+* Visualization-First Display functionality by `@dannon <https://github.com/dannon>`_ in `#20190 <https://github.com/galaxyproject/galaxy/pull/20190>`_
+* Touch up Dataset View by `@guerler <https://github.com/guerler>`_ in `#20290 <https://github.com/galaxyproject/galaxy/pull/20290>`_
+* DatasetView and Card Polish by `@dannon <https://github.com/dannon>`_ in `#20342 <https://github.com/galaxyproject/galaxy/pull/20342>`_
+
+-------------------
+24.2.4 (2025-06-17)
+-------------------
+
+
+=========
+Bug fixes
+=========
+
+* Always set copy_elements to true by `@mvdbeek <https://github.com/mvdbeek>`_ in `#19985 <https://github.com/galaxyproject/galaxy/pull/19985>`_
 
 -------------------
 24.2.3 (2025-03-16)

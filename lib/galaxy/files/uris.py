@@ -3,11 +3,7 @@ import logging
 import os
 import socket
 import tempfile
-from typing import (
-    List,
-    Optional,
-    Tuple,
-)
+from typing import Optional
 from urllib.parse import urlparse
 
 from galaxy.exceptions import (
@@ -19,7 +15,7 @@ from galaxy.files import (
     ConfiguredFileSources,
     NoMatchingFileSource,
 )
-from galaxy.files.sources import FilesSourceOptions
+from galaxy.files.models import FilesSourceOptions
 from galaxy.util import (
     stream_to_open_named_file,
     unicodify,
@@ -44,10 +40,10 @@ def stream_url_to_file(
     url: str,
     file_sources: Optional["ConfiguredFileSources"] = None,
     prefix: str = "gx_file_stream",
-    dir: Optional[str] = None,
+    dir: str | None = None,
     user_context=None,
-    target_path: Optional[str] = None,
-    file_source_opts: Optional[FilesSourceOptions] = None,
+    target_path: str | None = None,
+    file_source_opts: FilesSourceOptions | None = None,
 ) -> str:
     file_sources = ensure_file_sources(file_sources)
     file_source, rel_path = file_sources.get_file_source_path(url)
@@ -73,7 +69,7 @@ def stream_to_file(stream, suffix="", prefix="", dir=None, text=False, **kwd):
     return stream_to_open_named_file(stream, fd, temp_name, **kwd)
 
 
-def validate_uri_access(uri: str, is_admin: bool, ip_allowlist: List[IpAllowedListEntryT]) -> None:
+def validate_uri_access(uri: str, is_admin: bool, ip_allowlist: list[IpAllowedListEntryT]) -> None:
     """Perform uniform checks on supplied URIs.
 
     - Prevent access to local IPs not found in ip_allowlist.
@@ -84,7 +80,7 @@ def validate_uri_access(uri: str, is_admin: bool, ip_allowlist: List[IpAllowedLi
         raise AdminRequiredException()
 
 
-def split_port(parsed_url: str, url: str) -> Tuple[str, int]:
+def split_port(parsed_url: str, url: str) -> tuple[str, int]:
     try:
         idx = parsed_url.rindex(":")
         # We parse as an int and let this fail ungracefully if parsing
@@ -96,15 +92,17 @@ def split_port(parsed_url: str, url: str) -> Tuple[str, int]:
         raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
 
 
-def validate_non_local(uri: str, ip_allowlist: List[IpAllowedListEntryT]) -> str:
+def validate_non_local(uri: str, ip_allowlist: list[IpAllowedListEntryT]) -> str:
     # If it doesn't look like a URL, ignore it.
-    if not (uri.lstrip().startswith("http://") or uri.lstrip().startswith("https://")):
+    if not (uri.strip().startswith("http://") or uri.strip().startswith("https://")):
         return uri
 
-    # Strip leading whitespace before passing url to urlparse()
-    url = uri.lstrip()
+    # Strip surrounding whitespace before passing url to urlparse()
+    url = uri.strip()
     # Extract hostname component
     parsed_url = urlparse(url).netloc
+    if not parsed_url:
+        raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
     # If credentials are in this URL, we need to strip those.
     if parsed_url.count("@") > 0:
         # credentials.
@@ -138,8 +136,10 @@ def validate_non_local(uri: str, ip_allowlist: List[IpAllowedListEntryT]) -> str
     # Call getaddrinfo to resolve hostname into tuples containing IPs.
     try:
         addrinfo = socket.getaddrinfo(parsed_url, port)
-    except socket.gaierror as e:
-        log.debug("Could not resolve url '%': %'", url, e)
+    except (socket.gaierror, UnicodeError) as e:
+        # UnicodeError covers idna codec failures (e.g. empty DNS labels in hosts like '...' or '..example.com')
+        # which are not wrapped as socket.gaierror.
+        log.debug("Could not resolve url '%s': '%s'", url, e)
         raise RequestParameterInvalidException(f"Could not verify url '{url}'.")
     # Get the IP addresses that this entry resolves to (uniquely)
     # We drop:

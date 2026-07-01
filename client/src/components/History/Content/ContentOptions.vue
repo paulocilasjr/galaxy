@@ -1,12 +1,24 @@
 <script setup lang="ts">
+import {
+    faCopy,
+    faEyeSlash,
+    faFile,
+    faInfoCircle,
+    faPen,
+    faStop,
+    faTrash,
+    faTrashRestore,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import axios from "axios";
 import { BButton, BDropdown } from "bootstrap-vue";
-import { faStop } from "font-awesome-6";
+//@ts-ignore deprecated package without types (vue 2, remove this comment on vue 3 migration)
+import { ScanEye } from "lucide-vue";
 import { computed, type Ref, ref } from "vue";
 
 import { getAppRoot } from "@/onload/loadConfig";
 import { useEntryPointStore } from "@/stores/entryPointStore";
+import localize from "@/utils/localization";
 import { prependPath } from "@/utils/redirect";
 
 const props = defineProps({
@@ -36,7 +48,7 @@ const deleteCollectionMenu: Ref<BDropdown | null> = ref(null);
 
 const editButtonTitle = computed(() => (editDisabled.value ? "This dataset is not yet editable." : "Edit attributes"));
 const editDisabled = computed(() =>
-    ["discarded", "new", "upload", "queued", "running", "waiting"].includes(props.state)
+    ["discarded", "new", "upload", "queued", "running", "waiting"].includes(props.state),
 );
 const editUrl = computed(() => prependPath(props.itemUrls.edit));
 const displayUrl = computed(() => (props.itemUrls.display ? prependPath(props.itemUrls.display) : undefined));
@@ -99,46 +111,46 @@ function onDisplay($event: MouseEvent) {
         <!-- Special case for collections -->
         <BButton
             v-if="isCollection && canShowCollectionDetails"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             class="collection-job-details-btn px-1"
-            title="Show Details"
+            :title="localize('Show Details')"
             size="sm"
             variant="link"
             :href="showCollectionDetailsUrl"
             @click.prevent.stop="emit('showCollectionInfo')">
-            <icon icon="info-circle" />
+            <FontAwesomeIcon :icon="faInfoCircle" />
         </BButton>
         <!-- Common for all content items -->
         <BButton
             v-if="isDataset"
-            v-b-tooltip.hover
-            title="Display"
+            v-g-tooltip.hover
+            :title="localize('View')"
             tabindex="0"
             class="display-btn px-1"
             size="sm"
             variant="link"
             :href="displayUrl"
             @click.prevent.stop="onDisplay($event)">
-            <icon icon="eye" />
+            <ScanEye absolute-stroke-width :size="16" />
         </BButton>
         <BButton
             v-if="writable && isHistoryItem"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             :disabled="editDisabled"
-            :title="editButtonTitle"
+            :title="localize(editButtonTitle)"
             tabindex="0"
             class="edit-btn px-1"
             size="sm"
             variant="link"
             :href="editUrl"
             @click.prevent.stop="emit('edit')">
-            <icon icon="pen" />
+            <FontAwesomeIcon :icon="faPen" />
         </BButton>
         <BButton
             v-if="isRunningInteractiveTool"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             class="delete-btn px-1"
-            title="Stop this Interactive Tool"
+            :title="localize('Stop this Interactive Tool')"
             size="sm"
             variant="link"
             @click.stop="onDelete($event)">
@@ -146,49 +158,49 @@ function onDisplay($event: MouseEvent) {
         </BButton>
         <BButton
             v-else-if="writable && isHistoryItem && !isDeleted"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             :tabindex="isDataset ? '0' : '-1'"
             class="delete-btn px-1"
-            title="Delete"
+            :title="localize('Delete')"
             size="sm"
             variant="link"
             @click.stop="onDelete($event)">
-            <icon v-if="isDataset" icon="trash" />
+            <FontAwesomeIcon v-if="isDataset" :icon="faTrash" />
             <BDropdown v-else ref="deleteCollectionMenu" size="sm" variant="link" no-caret toggle-class="p-0 m-0">
                 <template v-slot:button-content>
-                    <icon icon="trash" />
+                    <FontAwesomeIcon :icon="faTrash" />
                 </template>
                 <b-dropdown-item title="Delete collection only" @click.prevent.stop="onDeleteItem">
-                    <icon icon="file" />
+                    <FontAwesomeIcon :icon="faFile" />
                     Collection only
                 </b-dropdown-item>
                 <b-dropdown-item title="Delete collection and elements" @click.prevent.stop="onDeleteItemRecursively">
-                    <icon icon="copy" />
+                    <FontAwesomeIcon :icon="faCopy" />
                     Collection and elements
                 </b-dropdown-item>
             </BDropdown>
         </BButton>
         <BButton
             v-if="writable && isHistoryItem && isDeleted"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             tabindex="0"
             class="undelete-btn px-1"
-            title="Undelete"
+            :title="localize('Undelete')"
             size="sm"
             variant="link"
             @click.stop="emit('undelete')">
-            <icon icon="trash-restore" />
+            <FontAwesomeIcon :icon="faTrashRestore" />
         </BButton>
         <BButton
             v-if="writable && isHistoryItem && !isVisible"
-            v-b-tooltip.hover
+            v-g-tooltip.hover
             tabindex="0"
             class="unhide-btn px-1"
-            title="Unhide"
+            :title="localize('Unhide')"
             size="sm"
             variant="link"
             @click.stop="emit('unhide')">
-            <icon icon="eye-slash" />
+            <FontAwesomeIcon :icon="faEyeSlash" />
         </BButton>
     </span>
 </template>

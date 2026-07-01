@@ -1,24 +1,26 @@
 <script setup lang="ts">
 import { faCheckCircle, faUndo } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BAlert, BLink, BModal } from "bootstrap-vue";
+import { BAlert, BLink } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
-import type { CreateNewCollectionPayload, HistoryItemSummary } from "@/api";
-import { createHistoryDatasetCollectionInstanceFull } from "@/api/datasetCollections";
-import { useCollectionBuilderItemsStore } from "@/stores/collectionBuilderItemsStore";
+import { type CreateNewCollectionPayload, type HDCASummary, type HistoryItemSummary, isHDCA } from "@/api";
+import { createHistoryDatasetCollectionInstanceFull, type SampleSheetCollectionType } from "@/api/datasetCollections";
+import type { ExtendedCollectionType } from "@/components/Form/Elements/FormData/types";
+import { useHistoryDatasets } from "@/composables/useHistoryDatasets";
 import { useHistoryItemsStore } from "@/stores/historyItemsStore";
-import { useHistoryStore } from "@/stores/historyStore";
 import localize from "@/utils/localization";
 import { orList } from "@/utils/strings";
 import { stateIsTerminal } from "@/utils/utils";
 
-import type { CollectionBuilderType } from "../History/adapters/buildCollectionModal";
+import type { CollectionBuilderType } from "../Collections/common/buildCollectionModal";
 import type { SupportedPairedOrPairedBuilderCollectionTypes } from "./common/useCollectionCreator";
 
+import GModal from "../BaseComponents/GModal.vue";
 import ListCollectionCreator from "./ListCollectionCreator.vue";
 import PairCollectionCreator from "./PairCollectionCreator.vue";
 import PairedOrUnpairedListCollectionCreator from "./PairedOrUnpairedListCollectionCreator.vue";
+import SampleSheetCollectionCreator from "./SampleSheetCollectionCreator.vue";
 import Heading from "@/components/Common/Heading.vue";
 import GenericItem from "@/components/History/Content/GenericItem.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
@@ -27,6 +29,7 @@ interface Props {
     historyId: string;
     show: boolean;
     collectionType: CollectionBuilderType;
+    extendedCollectionType: ExtendedCollectionType;
     selectedItems?: HistoryItemSummary[];
     defaultHideSourceItems?: boolean;
     extensions?: string[];
@@ -40,7 +43,7 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-    (e: "created-collection", collection: any): void;
+    (e: "created-collection", collection: HDCASummary): void;
     (e: "update:show", show: boolean): void;
     (e: "on-hide"): void;
 }>();
@@ -59,21 +62,18 @@ const createCollectionError = ref<string | null>(null);
 const createdCollection = ref<any>(null);
 
 // History items variables
-const historyItemsError = ref<string | null>(null);
-const collectionItemsStore = useCollectionBuilderItemsStore();
-const historyStore = useHistoryStore();
-const history = computed(() => historyStore.getHistoryById(props.historyId));
-const historyId = computed(() => props.historyId);
-const localFilterText = computed(() => props.filterText || "");
-const historyUpdateTime = computed(() => history.value?.update_time);
-const isFetchingItems = computed(() => collectionItemsStore.isFetching[localFilterText.value]);
-const historyDatasets = computed(() => {
-    if (collectionItemsStore.cachedDatasetsForFilterText) {
-        return collectionItemsStore.cachedDatasetsForFilterText[localFilterText.value] || [];
-    } else {
-        return [];
-    }
+const {
+    datasets: historyDatasets,
+    isFetching: isFetchingItems,
+    error: historyItemsError,
+    initialFetchDone: initialFetch,
+    history,
+} = useHistoryDatasets({
+    historyId: () => props.historyId,
+    filterText: () => props.filterText || "",
+    enabled: () => localShowToggle.value,
 });
+
 const pairedOrUnpairedSupportedCollectionType = computed<SupportedPairedOrPairedBuilderCollectionTypes | null>(() => {
     if (
         ["list:paired", "list:list", "list:paired_or_unpaired", "list:list:paired"].indexOf(props.collectionType) !== -1
@@ -84,34 +84,11 @@ const pairedOrUnpairedSupportedCollectionType = computed<SupportedPairedOrPaired
     }
 });
 
-/** Flag for the initial fetch of history items */
-const initialFetch = ref(false);
-
 /** Whether a list of items was selected to create a collection from */
 const fromSelection = computed(() => !!props.selectedItems?.length);
 
 /** Items to create the collection from */
 const creatorItems = computed(() => (fromSelection.value ? props.selectedItems : historyDatasets.value));
-
-watch(
-    () => localShowToggle.value,
-    async (show) => {
-        if (show) {
-            await fetchHistoryDatasets();
-            if (!initialFetch.value) {
-                initialFetch.value = true;
-            }
-        }
-    },
-    { immediate: true }
-);
-
-// Fetch items when history ID or update time changes, only if localShowToggle is true
-watch([historyId, historyUpdateTime, localFilterText], async () => {
-    if (localShowToggle.value) {
-        await fetchHistoryDatasets();
-    }
-});
 
 // If there is a change in `historyDatasets`, but we have selected items, we should update the selected items
 watch(
@@ -126,7 +103,7 @@ watch(
                 }
             });
         }
-    }
+    },
 );
 
 const extensionInTitle = computed<string>(() => {
@@ -143,13 +120,13 @@ const modalTitle = computed(() => {
         return localize(`Create a list of ${fromSelection.value ? "selected" : ""} ${extensionInTitle.value} datasets`);
     } else if (props.collectionType === "list:paired") {
         return localize(
-            `Create a list of ${fromSelection.value ? "selected" : ""} ${extensionInTitle.value} paired datasets`
+            `Create a list of ${fromSelection.value ? "selected" : ""} ${extensionInTitle.value} paired datasets`,
         );
     } else if (props.collectionType === "paired") {
         return localize(
             `Create a ${extensionInTitle.value} paired dataset collection ${
                 fromSelection.value ? "from selected items" : ""
-            }`
+            }`,
         );
     } else {
         return localize("Create a collection");
@@ -158,13 +135,17 @@ const modalTitle = computed(() => {
 
 const historyItemsStore = useHistoryItemsStore();
 /** The created collection accessed from the history items store */
-const createdCollectionInHistory = computed(() => {
+const createdCollectionInHistory = computed<HDCASummary | undefined>(() => {
     const historyItems = historyItemsStore.getHistoryItems(props.historyId, "");
-    return historyItems.find((item) => item.id === createdCollection.value?.id);
+    const createdCollectionItem = historyItems.find((item) => item.id === createdCollection.value?.id);
+    if (createdCollectionItem && isHDCA(createdCollectionItem)) {
+        return createdCollectionItem;
+    }
+    return undefined;
 });
 /** If the created collection has achieved a terminal state */
 const createdCollectionInReadyState = computed(
-    () => createdCollectionInHistory.value && stateIsTerminal(createdCollectionInHistory.value)
+    () => createdCollectionInHistory.value && stateIsTerminal(createdCollectionInHistory.value),
 );
 
 // Methods
@@ -189,25 +170,11 @@ async function createHDCA(payload: CreateNewCollectionPayload) {
 watch(
     () => createdCollectionInReadyState.value,
     (stateReady) => {
-        if (stateReady) {
+        if (stateReady && createdCollectionInHistory.value) {
             emit("created-collection", createdCollectionInHistory.value);
         }
-    }
+    },
 );
-
-async function fetchHistoryDatasets() {
-    const { error } = await collectionItemsStore.fetchDatasetsForFiltertext(
-        historyId.value,
-        historyUpdateTime.value,
-        localFilterText.value
-    );
-    if (error) {
-        historyItemsError.value = error;
-        console.error("Error fetching history items:", historyItemsError.value);
-    } else {
-        historyItemsError.value = null;
-    }
-}
 
 function hideCreator() {
     localShowToggle.value = false;
@@ -227,22 +194,24 @@ function redrawCreator() {
     }
 }
 
+const sampleSheetType = computed<SampleSheetCollectionType | null>(() => {
+    if (!props.collectionType.startsWith("sample_sheet")) {
+        return null;
+    }
+    return props.collectionType as SampleSheetCollectionType;
+});
+
 defineExpose({ redrawCreator });
 </script>
 
 <template>
     <component
-        :is="props.notModal ? 'div' : BModal"
+        :is="props.notModal ? 'div' : GModal"
         id="collection-creator-modal"
-        v-model="localShowToggle"
-        :busy="(fromSelection && isFetchingItems) || creatingCollection"
-        modal-class="ui-modal collection-creator-modal"
-        :hide-footer="!createdCollection && !createCollectionError"
-        ok-only
-        :ok-title="localize('Exit')"
-        ok-variant="secondary"
-        @hidden="resetCreator">
-        <template v-slot:modal-header>
+        :show.sync="localShowToggle"
+        size="medium"
+        @close="resetCreator">
+        <template v-slot:header>
             <Heading class="w-100" size="sm">
                 <div class="d-flex justify-content-between unselectable w-100">
                     <div>{{ modalTitle }}</div>
@@ -252,6 +221,7 @@ defineExpose({ redrawCreator });
                 </div>
             </Heading>
         </template>
+
         <BAlert v-if="isFetchingItems && !initialFetch" variant="info" show>
             <LoadingSpan :message="localize('Loading items')" />
         </BAlert>
@@ -325,17 +295,16 @@ defineExpose({ redrawCreator });
             mode="modal"
             @on-cancel="hideCreator"
             @on-create="createHDCA" />
+        <SampleSheetCollectionCreator
+            v-else-if="sampleSheetType"
+            :history-id="props.historyId"
+            :initial-elements="creatorItems || []"
+            :default-hide-source-items="props.defaultHideSourceItems"
+            :from-selection="fromSelection"
+            :extensions="props.extensions"
+            :collection-type="sampleSheetType"
+            :extended-collection-type="extendedCollectionType"
+            @on-create="createHDCA"
+            @on-cancel="hideCreator" />
     </component>
 </template>
-
-<style lang="scss">
-/** NOTE: Not using `<style scoped> here because these classes are
-`BModal` `body-class` and `content-class` and don't seem to work
-with scoped */
-.collection-creator-modal {
-    .modal-dialog {
-        width: 85%;
-        max-width: 100%;
-    }
-}
-</style>

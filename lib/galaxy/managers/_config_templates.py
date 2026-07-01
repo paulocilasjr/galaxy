@@ -3,12 +3,7 @@ import os
 from typing import (
     Any,
     cast,
-    Dict,
-    List,
-    Optional,
-    Type,
     TypeVar,
-    Union,
 )
 
 from pydantic import (
@@ -19,6 +14,7 @@ from typing_extensions import TypedDict
 
 from galaxy.exceptions import (
     InconsistentDatabase,
+    InternalServerError,
     ObjectNotFound,
     RequestParameterInvalidException,
     RequestParameterMissingException,
@@ -60,26 +56,26 @@ from galaxy.work.context import SessionRequestContext
 
 log = logging.getLogger(__name__)
 
-SuppliedVariables = Dict[str, TemplateVariableValueType]
-SuppliedSecrets = Dict[str, str]
+SuppliedVariables = dict[str, TemplateVariableValueType]
+SuppliedSecrets = dict[str, str]
 
 
 class CreateInstancePayload(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     template_id: str
     template_version: int
     variables: SuppliedVariables
     secrets: SuppliedSecrets
-    uuid: Optional[UUID4] = None
+    uuid: UUID4 | None = None
 
 
 class UpdateInstancePayload(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    variables: Optional[SuppliedVariables] = None
-    hidden: Optional[bool] = None
-    active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    variables: SuppliedVariables | None = None
+    hidden: bool | None = None
+    active: bool | None = None
 
 
 class UpdateInstanceSecretPayload(BaseModel):
@@ -94,7 +90,7 @@ class UpgradeInstancePayload(BaseModel):
 
 
 class TestUpdateInstancePayload(BaseModel):
-    variables: Optional[SuppliedVariables] = None
+    variables: SuppliedVariables | None = None
 
 
 class TestUpgradeInstancePayload(BaseModel):
@@ -123,20 +119,20 @@ class UpdateTestTarget:
 
 class CreateTestTarget:
     payload: CreateInstancePayload
-    instance_class: Type[HasConfigSecrets]
+    instance_class: type[HasConfigSecrets]
 
-    def __init__(self, payload: CreateInstancePayload, instance_class: Type[HasConfigSecrets]):
+    def __init__(self, payload: CreateInstancePayload, instance_class: type[HasConfigSecrets]):
         self.payload = payload
         self.instance_class = instance_class
 
 
-ModifyInstancePayload = Union[UpdateInstanceSecretPayload, UpgradeInstancePayload, UpdateInstancePayload]
-TestModifyInstancePayload = Union[TestUpgradeInstancePayload, TestUpdateInstancePayload]
-CanTestPluginStatus = Union[HasConfigTemplate, CreateTestTarget, UpgradeTestTarget, UpdateTestTarget]
+ModifyInstancePayload = UpdateInstanceSecretPayload | UpgradeInstancePayload | UpdateInstancePayload
+TestModifyInstancePayload = TestUpgradeInstancePayload | TestUpdateInstancePayload
+CanTestPluginStatus = HasConfigTemplate | CreateTestTarget | UpgradeTestTarget | UpdateTestTarget
 
 
 def recover_secrets(
-    user_object_store: HasConfigSecrets, vault: Union[UserVaultWrapper, Vault], app_config: UsesTemplatesAppConfig
+    user_object_store: HasConfigSecrets, vault: UserVaultWrapper | Vault, app_config: UsesTemplatesAppConfig
 ) -> SecretsDict:
     if isinstance(vault, UserVaultWrapper):
         user_vault = vault
@@ -161,8 +157,8 @@ class TemplateParameters(TypedDict):
     secrets: SuppliedSecrets
     variables: SuppliedVariables
     environment: EnvironmentDict
-    user_details: Dict[str, Any]
-    implicit: Optional[ImplicitConfigurationParameters]
+    user_details: dict[str, Any]
+    implicit: ImplicitConfigurationParameters | None
 
 
 class TemplateServerConfiguration:
@@ -173,14 +169,14 @@ class TemplateServerConfiguration:
     information (provider URLs and provider specific configuration for the oauth2 flow).
     """
 
-    oauth2_client_pair: Optional[OAuth2ClientPair]
-    oauth2_configuration: Optional[OAuth2Configuration]
+    oauth2_client_pair: OAuth2ClientPair | None
+    oauth2_configuration: OAuth2Configuration | None
 
     def __init__(
         self,
-        oauth2_client_pair: Optional[OAuth2ClientPair] = None,
-        oauth2_configuration: Optional[OAuth2Configuration] = None,
-        oauth2_scope: Optional[str] = None,
+        oauth2_client_pair: OAuth2ClientPair | None = None,
+        oauth2_configuration: OAuth2Configuration | None = None,
+        oauth2_scope: str | None = None,
     ):
         self.oauth2_client_pair = oauth2_client_pair
         self.oauth2_configuration = oauth2_configuration
@@ -269,7 +265,7 @@ def prepare_environment(
 
 
 def prepare_environment_from_root(
-    root: Optional[List[TemplateEnvironmentEntry]], vault: Vault, app_config: UsesTemplatesAppConfig
+    root: list[TemplateEnvironmentEntry] | None, vault: Vault, app_config: UsesTemplatesAppConfig
 ) -> EnvironmentDict:
     environment: EnvironmentDict = {}
     for environment_entry in root or []:
@@ -280,6 +276,8 @@ def prepare_environment_from_root(
             secret_value = vault.read_secret(template_secret.vault_key) or template_secret.default
             if secret_value:
                 environment[e_name] = secret_value
+            else:
+                raise InternalServerError(f"Failed to retrieve {template_secret.vault_key} from vault")
         elif e_type == "variable":
             template_variable = cast(TemplateEnvironmentVariable, environment_entry)
             variable_value = os.environ.get(template_variable.variable)
@@ -287,6 +285,10 @@ def prepare_environment_from_root(
                 variable_value = template_variable.default
             if variable_value:
                 environment[e_name] = variable_value
+            else:
+                raise InternalServerError(
+                    f"Environment variable {template_variable.variable} not found and no default provided. Please set this variable in the environment or provide a default value in the template definition."
+                )
         else:
             raise Exception(f"Unknown environment entry type detected [{e_type}]")
 
@@ -299,8 +301,9 @@ def update_template_instance(
     payload: UpdateInstancePayload,
     template: Template,
 ):
-    validate_specified_datatypes_variables(payload.variables or {}, template)
-    validate_no_extra_variables_defined(payload.variables or {}, template)
+    if payload.variables is not None:
+        validate_specified_datatypes_variables(payload.variables, template)
+        validate_no_extra_variables_defined(payload.variables, template)
     if payload.name is not None:
         template_instance.name = payload.name
     if payload.description is not None:
@@ -363,8 +366,7 @@ def update_instance_secret(
     app_config: UsesTemplatesAppConfig,
 ):
     template_secrets = secrets_as_dict(template.secrets or [])
-    secret_name = payload.secret_name
-    if secret_name not in template_secrets:
+    if (secret_name := payload.secret_name) not in template_secrets:
         raise RequestParameterInvalidException(f"Configuration template does not specify a secret named {secret_name}")
 
     user_vault = trans.user_vault
@@ -401,7 +403,7 @@ def upgrade_secrets(
         if secret_name not in recorded_secrets:
             recorded_secrets.append(secret_name)
 
-    secrets_to_delete: List[str] = []
+    secrets_to_delete: list[str] = []
     for recorded_secret in recorded_secrets:
         if recorded_secret not in upgraded_template_secrets:
             key = template_instance.vault_key(recorded_secret, app_config)
@@ -424,8 +426,8 @@ def save_template_instance(sa_session: galaxy_scoped_session, template_instance:
 T = TypeVar("T", bound=Template, covariant=True)
 
 
-def sort_templates(config, catalog: List[T], instance: HasConfigTemplate) -> List[T]:
-    configured_template: Optional[T] = None
+def sort_templates(config, catalog: list[T], instance: HasConfigTemplate) -> list[T]:
+    configured_template: T | None = None
     try:
         configured_template = find_template_by(
             catalog, instance.template_id, instance.template_version, "config template"
@@ -448,7 +450,7 @@ def implicit_parameters_for_testing(
     template_server_configuration: TemplateServerConfiguration,
     target: CanTestPluginStatus,
     app_config: UsesTemplatesAppConfig,
-) -> Optional[ImplicitConfigurationParameters]:
+) -> ImplicitConfigurationParameters | None:
     implicit: ImplicitConfigurationParameters = {}
     if template_server_configuration.oauth2_configuration:
         refresh_token_key = None
@@ -512,8 +514,8 @@ def _inject_oauth2_access_token(
 
 
 def oauth2_refresh_token_status(
-    template_server_configuration: TemplateServerConfiguration, exception: Optional[Exception]
-) -> Optional[PluginAspectStatus]:
+    template_server_configuration: TemplateServerConfiguration, exception: Exception | None
+) -> PluginAspectStatus | None:
     if not template_server_configuration.uses_oauth2:
         # no oauth enabled, don't report a status associated with
         return None

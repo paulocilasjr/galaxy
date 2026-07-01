@@ -1,11 +1,7 @@
 import os
 import shlex
 from typing import (
-    List,
-    Optional,
-    Tuple,
     TYPE_CHECKING,
-    Union,
 )
 
 if TYPE_CHECKING:
@@ -19,6 +15,7 @@ DEFAULT_SINGULARITY_COMMAND = "singularity"
 DEFAULT_CLEANENV = True
 DEFAULT_IPC = True
 DEFAULT_PID = True
+DEFAULT_CONTAIN = True
 DEFAULT_NO_MOUNT = ["tmp"]
 DEFAULT_SUDO = False
 DEFAULT_SUDO_COMMAND = "sudo"
@@ -28,11 +25,11 @@ DEFAULT_RUN_EXTRA_ARGUMENTS = None
 def pull_mulled_singularity_command(
     docker_image_identifier: str,
     cache_directory: str,
-    namespace: Optional[str] = None,
+    namespace: str | None = None,
     singularity_cmd: str = DEFAULT_SINGULARITY_COMMAND,
     sudo: bool = DEFAULT_SUDO,
     sudo_cmd: str = DEFAULT_SUDO_COMMAND,
-) -> List[str]:
+) -> list[str]:
     command_parts = []
     command_parts += _singularity_prefix(
         singularity_cmd=singularity_cmd,
@@ -54,7 +51,7 @@ def pull_singularity_command(
     singularity_cmd: str = DEFAULT_SINGULARITY_COMMAND,
     sudo: bool = DEFAULT_SUDO,
     sudo_cmd: str = DEFAULT_SUDO_COMMAND,
-) -> List[str]:
+) -> list[str]:
     # Make sure cache dir exists
     dirname = os.path.dirname(os.path.normpath(cache_path))
     os.makedirs(dirname, exist_ok=True)
@@ -66,19 +63,20 @@ def pull_singularity_command(
 def build_singularity_run_command(
     container_command: str,
     image: str,
-    volumes: Optional[List["DockerVolume"]] = None,
-    env: Optional[List[Tuple[str, str]]] = None,
-    working_directory: Optional[str] = DEFAULT_WORKING_DIRECTORY,
+    volumes: list["DockerVolume"] | None = None,
+    env: list[tuple[str, str]] | None = None,
+    working_directory: str | None = DEFAULT_WORKING_DIRECTORY,
     singularity_cmd: str = DEFAULT_SINGULARITY_COMMAND,
-    run_extra_arguments: Optional[str] = DEFAULT_RUN_EXTRA_ARGUMENTS,
+    run_extra_arguments: str | None = DEFAULT_RUN_EXTRA_ARGUMENTS,
     sudo: bool = DEFAULT_SUDO,
     sudo_cmd: str = DEFAULT_SUDO_COMMAND,
-    guest_ports: Union[bool, List[str]] = False,
-    container_name: Optional[str] = None,
+    guest_ports: bool | list[str] = False,
+    container_name: str | None = None,
     cleanenv: bool = DEFAULT_CLEANENV,
     ipc: bool = DEFAULT_IPC,
     pid: bool = DEFAULT_PID,
-    no_mount: Optional[List[str]] = DEFAULT_NO_MOUNT,
+    contain: bool = DEFAULT_CONTAIN,
+    no_mount: list[str] | None = DEFAULT_NO_MOUNT,
 ) -> str:
     volumes = volumes or []
     env = env or []
@@ -96,11 +94,9 @@ def build_singularity_run_command(
     )
     command_parts.append("-s")
     command_parts.append("exec")
-    # Singularity mounts some directories, such as $HOME and $PWD by default.
-    # using --contain disables this behaviour and only allows explicitly
-    # requested volumes to be mounted. This gives fully full-control over
-    # the mounting behavior.
-    command_parts.append("--contain")
+
+    if contain:
+        command_parts.append("--contain")
     if working_directory:
         command_parts.extend(["--pwd", shlex.quote(working_directory)])
     if cleanenv:
@@ -128,7 +124,7 @@ def _singularity_prefix(
     sudo: bool = DEFAULT_SUDO,
     sudo_cmd: str = DEFAULT_SUDO_COMMAND,
     **kwds,
-) -> List[str]:
+) -> list[str]:
     """Prefix to issue a singularity command."""
     command_parts = []
     if sudo:

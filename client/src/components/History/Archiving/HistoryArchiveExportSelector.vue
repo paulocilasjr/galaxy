@@ -10,6 +10,8 @@ import { DEFAULT_EXPORT_PARAMS } from "@/composables/shortTermStorage";
 import { useTaskMonitor } from "@/composables/taskMonitor";
 
 import ExportRecordCard from "./ExportRecordCard.vue";
+import GTab from "@/components/BaseComponents/GTab.vue";
+import GTabs from "@/components/BaseComponents/GTabs.vue";
 import ExportToFileSourceForm from "@/components/Common/ExportForm.vue";
 import ExportToRDMRepositoryForm from "@/components/Common/ExportRDMForm.vue";
 import ExternalLink from "@/components/ExternalLink.vue";
@@ -45,7 +47,7 @@ const historyName = computed(() => {
 
 const mostUpToDateExport = computed(() => {
     return existingExports.value.find(
-        (exportRecord) => exportRecord.isPermanent && (exportRecord.isUpToDate || exportRecord.isPreparing)
+        (exportRecord) => exportRecord.isPermanent && (exportRecord.isUpToDate || exportRecord.isPreparing),
     );
 });
 
@@ -206,17 +208,17 @@ function onArchiveHistoryWithExport() {
         </BButton>
 
         <BModal v-model="isExportDialogOpen" title="Export history to permanent storage" size="lg" hide-footer>
-            <BTabs card vertical lazy class="export-option-tabs">
-                <BTab id="to-remote-file-tab" title="To Remote File Source" active>
+            <GTabs card vertical lazy class="export-option-tabs">
+                <GTab id="to-remote-file-tab" title="To Repository" active>
                     <p>
-                        <b>Exporting to a remote file source</b> will create a compressed archive of the history
-                        contents, copy it to a remote location (e.g. an FTP server) and create an export record with
-                        this information that will be associated with the archived history. You will be able to recreate
-                        the history later by importing it from the export record.
+                        <b>Exporting to a repository</b> will create a compressed archive of the history contents, copy
+                        it to a remote location (e.g. an FTP server) and create an export record with this information
+                        that will be associated with the archived history. You will be able to recreate the history
+                        later by importing it from the export record.
                     </p>
                     <ExportToFileSourceForm what="history" @export="doExportToFileSourceWithPrefix" />
-                </BTab>
-                <BTab id="to-rdm-repository-tab" title="To RDM Repository">
+                </GTab>
+                <GTab id="to-rdm-repository-tab" title="To RDM Repository">
                     <p>
                         <b>Exporting to a RDM repository</b> (e.g. any
                         <ExternalLink href="https://inveniosoftware.org/products/rdm/"> Invenio RDM </ExternalLink>
@@ -235,8 +237,8 @@ function onArchiveHistoryWithExport() {
                         :default-filename="historyName + ' (Galaxy History)'"
                         :default-record-name="historyName"
                         @export="doExportToFileSource" />
-                </BTab>
-            </BTabs>
+                </GTab>
+            </GTabs>
         </BModal>
     </div>
 </template>

@@ -1,29 +1,35 @@
 <script setup lang="ts">
-import { library } from "@fortawesome/fontawesome-svg-core";
-import { faDatabase, faEyeSlash, faHdd, faMapMarker, faSync, faTrash } from "@fortawesome/free-solid-svg-icons";
+import {
+    faBook,
+    faDatabase,
+    faEyeSlash,
+    faMapMarker,
+    faSpinner,
+    faSync,
+    faTrash,
+} from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { watchImmediate } from "@vueuse/core";
-import { BButton, BButtonGroup, BModal } from "bootstrap-vue";
+import { BButton, BButtonGroup } from "bootstrap-vue";
 import { formatDistanceToNowStrict } from "date-fns";
 import { storeToRefs } from "pinia";
 import prettyBytes from "pretty-bytes";
 import { computed, onMounted, ref, toRef } from "vue";
 import { useRouter } from "vue-router/composables";
 
-import { type HistorySummaryExtended, type RegisteredUser, userOwnsHistory } from "@/api";
+import { type HistorySummaryExtended, userOwnsHistory } from "@/api";
 import { HistoryFilters } from "@/components/History/HistoryFilters.js";
+import { PAGE_LABELS } from "@/components/Page/constants";
 import { useConfig } from "@/composables/config";
 import { useHistoryContentStats } from "@/composables/historyContentStats";
-import { useStorageLocationConfiguration } from "@/composables/storageLocation";
+import { useToast } from "@/composables/toast";
+import { useSSEConnectionStatus } from "@/composables/useNotificationSSE";
+import { useWindowAwareNavigation } from "@/composables/windowAwareNavigation";
+import { usePageEditorStore } from "@/stores/pageEditorStore";
 import { useUserStore } from "@/stores/userStore";
+import localize from "@/utils/localization";
 
-import PreferredStorePopover from "./PreferredStorePopover.vue";
-import SelectPreferredStore from "./SelectPreferredStore.vue";
 import GButton from "@/components/BaseComponents/GButton.vue";
-
-const { isOnlyPreference } = useStorageLocationConfiguration();
-
-library.add(faDatabase, faEyeSlash, faHdd, faMapMarker, faSync, faTrash);
 
 const props = withDefaults(
     defineProps<{
@@ -40,41 +46,42 @@ const props = withDefaults(
         filterText: "",
         showControls: false,
         hideReload: false,
-    }
+    },
 );
 
 const emit = defineEmits(["update:filter-text", "reloadContents"]);
 
 const router = useRouter();
-const { config } = useConfig();
+const { pushToFrameOrPage } = useWindowAwareNavigation();
 const { currentUser, isAnonymous } = storeToRefs(useUserStore());
+const { config } = useConfig();
+const {
+    connected: sseConnected,
+    hasEverConnected: sseHasEverConnected,
+    reconnect: reconnectSSE,
+} = useSSEConnectionStatus();
 const { historySize, numItemsActive, numItemsDeleted, numItemsHidden } = useHistoryContentStats(
-    toRef(props, "history")
+    toRef(props, "history"),
 );
+
+const sseMode = computed(() => config.value?.enable_sse_updates === true);
+// Treat the connection as "lost" only after a successful open: the brief
+// initial-connect window where ``sseConnected`` is still false isn't a
+// real outage and shouldn't go red.
+const sseLost = computed(() => sseMode.value && sseHasEverConnected.value && !sseConnected.value);
 
 const reloadButtonLoading = ref(false);
 const reloadButtonTitle = ref("");
 const reloadButtonVariant = ref("link");
-const showPreferredObjectStoreModal = ref(false);
 const historyPreferredObjectStoreId = ref<string | null | undefined>();
 
 watchImmediate(
     () => props.history,
-    () => (historyPreferredObjectStoreId.value = props.history.preferred_object_store_id)
+    () => (historyPreferredObjectStoreId.value = props.history.preferred_object_store_id),
 );
 
 const niceHistorySize = computed(() => prettyBytes(historySize.value));
-const canManageStorage = computed(
-    () => userOwnsHistory(currentUser.value, props.history) && !currentUser.value?.isAnonymous
-);
-
-const storageLocationTitle = computed(() => {
-    if (isOnlyPreference.value) {
-        return "History Preferred Storage Location";
-    } else {
-        return "History Storage Location";
-    }
-});
+const canManageStorage = computed(() => !isAnonymous.value && userOwnsHistory(currentUser.value, props.history));
 
 function onDashboard() {
     router.push({ name: "HistoryOverviewInAnalysis", params: { historyId: props.history.id } });
@@ -104,6 +111,20 @@ function getCurrentFilterVal(filter: string) {
 }
 
 function updateTime() {
+    if (sseMode.value) {
+        // Under SSE the "last checked" timestamp ticks only when the history
+        // actually changes — a 2-minute idle window is normal and shouldn't
+        // be presented as staleness. Surface a connection-lost warning
+        // instead, gated on a previous successful open.
+        if (sseLost.value) {
+            reloadButtonTitle.value = "Live updates disconnected. Click to refresh.";
+            reloadButtonVariant.value = "danger";
+        } else {
+            reloadButtonTitle.value = "Refresh history";
+            reloadButtonVariant.value = "link";
+        }
+        return;
+    }
     const diffToNow = formatDistanceToNowStrict(props.lastChecked, { addSuffix: true });
     const diffToNowSec = Date.now().valueOf() - props.lastChecked.valueOf();
     // if history isn't being watched or hasn't been watched/polled for over 2 minutes
@@ -117,6 +138,12 @@ function updateTime() {
 }
 
 async function reloadContents() {
+    // When live updates have dropped, the click should re-establish the SSE
+    // pipeline — not just pull a one-shot REST refresh — so subsequent updates
+    // resume on their own. The emit below still re-fetches contents now.
+    if (sseLost.value) {
+        reconnectSSE();
+    }
     emit("reloadContents");
     reloadButtonLoading.value = true;
     setTimeout(() => {
@@ -124,67 +151,77 @@ async function reloadContents() {
     }, 1000);
 }
 
-function onUpdatePreferredObjectStoreId(preferredObjectStoreId: string | null) {
-    showPreferredObjectStoreModal.value = false;
-    // ideally this would be pushed back to the history object somehow
-    // and tracked there... but for now this is only component using
-    // this information.
-    historyPreferredObjectStoreId.value = preferredObjectStoreId;
+// Re-render the button as soon as the SSE state flips, instead of waiting up
+// to a second for the next setInterval tick — connection-loss feedback should
+// be immediate.
+watchImmediate([sseMode, sseLost], updateTime);
+
+const isResolvingPage = ref(false);
+
+async function navigateToCurrentPage() {
+    const pageStore = usePageEditorStore();
+    const toast = useToast();
+    isResolvingPage.value = true;
+    try {
+        const pageId = await pageStore.resolveCurrentPage(props.history.id);
+        const page = pageStore.pages.find((n) => n.id === pageId);
+        const pageTitle = page?.title || PAGE_LABELS.history.entityName;
+        const inlineUrl = `/histories/${props.history.id}/pages/${pageId}`;
+        pushToFrameOrPage({
+            framedUrl: `${inlineUrl}?displayOnly=true`,
+            inlineUrl,
+            title: `${PAGE_LABELS.history.entityName}: ${pageTitle}`,
+        });
+    } catch (e: any) {
+        toast.error(e.message || "Failed to open page");
+    } finally {
+        isResolvingPage.value = false;
+    }
 }
 
-const registeredUser = computed<RegisteredUser>(() => {
-    if (isAnonymous.value) {
-        throw new Error("Invalid anonymous user object encountered");
-    }
-    return currentUser.value as RegisteredUser;
-});
-
 onMounted(() => {
-    updateTime();
-    // update every second
+    // The polling-mode title is derived from a wall-clock diff that has no
+    // reactive dependency, so a 1s tick keeps "Last refreshed Xs ago" fresh.
     setInterval(updateTime, 1000);
 });
 </script>
 
 <template>
     <div class="history-size my-1 d-flex justify-content-between">
-        <GButton
-            tooltip
-            title="History Size"
-            transparent
-            size="small"
-            color="blue"
-            class="rounded-0 history-storage-overview-button"
-            :disabled="!canManageStorage"
-            data-description="storage dashboard button"
-            @click="onDashboard">
-            <FontAwesomeIcon :icon="faDatabase" />
-            <span>{{ niceHistorySize }}</span>
-        </GButton>
+        <div class="d-flex">
+            <GButton
+                tooltip
+                :title="localize('History Size')"
+                transparent
+                size="small"
+                color="blue"
+                class="rounded-0 history-storage-overview-button"
+                :disabled="!canManageStorage"
+                data-description="storage dashboard button"
+                @click="onDashboard">
+                <FontAwesomeIcon :icon="faDatabase" />
+                <span>{{ niceHistorySize }}</span>
+            </GButton>
+
+            <GButton
+                tooltip
+                :title="PAGE_LABELS.history.historyCounterTooltip"
+                transparent
+                size="small"
+                color="blue"
+                class="rounded-0"
+                :disabled="isAnonymous || isResolvingPage"
+                data-description="history page button"
+                @click="navigateToCurrentPage">
+                <FontAwesomeIcon :icon="isResolvingPage ? faSpinner : faBook" :spin="isResolvingPage" />
+            </GButton>
+        </div>
 
         <BButtonGroup v-if="currentUser">
-            <BButton
-                v-if="config && config.object_store_allows_id_selection && !isAnonymous"
-                :id="`history-storage-${history.id}`"
-                title="Manage Preferred History Storage"
-                variant="link"
-                size="sm"
-                class="rounded-0 text-decoration-none"
-                @click="showPreferredObjectStoreModal = true">
-                <FontAwesomeIcon :icon="faHdd" />
-            </BButton>
-
-            <PreferredStorePopover
-                v-if="config && config.object_store_allows_id_selection && !isAnonymous"
-                :history-id="history.id"
-                :history-preferred-object-store-id="historyPreferredObjectStoreId ?? undefined"
-                :user="registeredUser">
-            </PreferredStorePopover>
-
             <BButtonGroup>
                 <BButton
-                    v-b-tooltip.hover
-                    title="Show active"
+                    v-g-tooltip.hover
+                    :title="localize('Show active')"
                     variant="link"
                     size="sm"
                     class="rounded-0 text-decoration-none"
@@ -196,8 +233,8 @@ onMounted(() => {
 
                 <BButton
                     v-if="numItemsDeleted"
-                    v-b-tooltip.hover
-                    title="Include deleted"
+                    v-g-tooltip.hover
+                    :title="localize('Include deleted')"
                     variant="link"
                     size="sm"
                     class="rounded-0 text-decoration-none"
@@ -210,8 +247,8 @@ onMounted(() => {
 
                 <BButton
                     v-if="numItemsHidden"
-                    v-b-tooltip.hover
-                    title="Include hidden"
+                    v-g-tooltip.hover
+                    :title="localize('Include hidden')"
                     variant="link"
                     size="sm"
                     class="rounded-0 text-decoration-none"
@@ -224,7 +261,7 @@ onMounted(() => {
 
                 <BButton
                     v-if="!hideReload"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :title="reloadButtonTitle"
                     :variant="reloadButtonVariant"
                     size="sm"
@@ -233,20 +270,6 @@ onMounted(() => {
                     <FontAwesomeIcon :icon="faSync" :spin="reloadButtonLoading" />
                 </BButton>
             </BButtonGroup>
-
-            <BModal
-                v-model="showPreferredObjectStoreModal"
-                :title="storageLocationTitle"
-                modal-class="history-preferred-object-store-modal"
-                title-tag="h3"
-                size="sm"
-                hide-footer>
-                <SelectPreferredStore
-                    v-if="!isAnonymous"
-                    :user-preferred-object-store-id="registeredUser.preferred_object_store_id ?? undefined"
-                    :history="history"
-                    @updated="onUpdatePreferredObjectStoreId" />
-            </BModal>
         </BButtonGroup>
     </div>
 </template>

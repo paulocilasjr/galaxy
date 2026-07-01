@@ -1,9 +1,5 @@
 import logging
 import os
-from typing import (
-    List,
-    Optional,
-)
 
 from fastapi import (
     Body,
@@ -20,6 +16,7 @@ from sqlalchemy import (
 
 import tool_shed.util.shed_util_common as suc
 from galaxy.exceptions import (
+    AuthenticationRequired,
     InsufficientPermissionsException,
     ObjectNotFound,
     RequestParameterInvalidException,
@@ -56,7 +53,7 @@ router = Router(tags=["users"])
 
 log = logging.getLogger(__name__)
 
-TOOL_SHED_SENSITIVE_API_REQUEST_LIMIT: Optional[str] = os.environ.get("TOOL_SHED_SENSITIVE_API_REQUEST_LIMIT", None)
+TOOL_SHED_SENSITIVE_API_REQUEST_LIMIT: str | None = os.environ.get("TOOL_SHED_SENSITIVE_API_REQUEST_LIMIT", None)
 SENSITIVE_API_REQUEST_LIMIT = TOOL_SHED_SENSITIVE_API_REQUEST_LIMIT or "10/minute"
 
 
@@ -92,7 +89,7 @@ class UiRegisterResponse(BaseModel):
     email: str
     activation_sent: bool = False
     activation_error: bool = False
-    contact_email: Optional[str] = None
+    contact_email: str | None = None
 
 
 class UiChangePasswordRequest(BaseModel):
@@ -114,7 +111,7 @@ class FastAPIUsers:
         description="index users",
         operation_id="users__index",
     )
-    def index(self, trans: SessionRequestContext = DependsOnTrans) -> List[User]:
+    def index(self, trans: SessionRequestContext = DependsOnTrans) -> list[User]:
         deleted = False
         return index(trans.app, deleted)
 
@@ -135,7 +132,7 @@ class FastAPIUsers:
     def current(self, trans: SessionRequestContext = DependsOnTrans) -> User:
         user = trans.user
         if not user:
-            raise ObjectNotFound()
+            raise AuthenticationRequired()
 
         return get_api_user(trans.app, user)
 

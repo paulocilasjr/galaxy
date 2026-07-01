@@ -2,10 +2,6 @@ import os
 import shutil
 from os import getcwd
 from tempfile import mkdtemp
-from typing import (
-    List,
-    Tuple,
-)
 
 from galaxy.jobs.command_factory import (
     build_command,
@@ -32,7 +28,7 @@ class TestCommandFactory(TestCase):
     def setUp(self):
         self.job_dir = mkdtemp()
         self.job_wrapper = MockJobWrapper(self.job_dir)
-        self.workdir_outputs: List[Tuple[str, str]] = []
+        self.workdir_outputs: list[tuple[str, str]] = []
 
         def workdir_outputs(job_wrapper, **kwds):
             assert job_wrapper == self.job_wrapper
@@ -61,7 +57,9 @@ class TestCommandFactory(TestCase):
         dep_commands = [". /opt/galaxy/tools/bowtie/default/env.sh"]
         self.job_wrapper.dependency_shell_commands = dep_commands
         self._assert_command_is(
-            self._surround_command(f"{self.job_wrapper.shell} {self.job_wrapper.working_directory}/tool_script.sh")
+            self._surround_command(
+                f"{self.job_wrapper.shell} {os.path.join(self.job_wrapper.working_directory, 'tool_script.sh')}"
+            )
         )
         self.__assert_tool_script_is(f"#!/bin/sh\n{dep_commands[0]}; {MOCK_COMMAND_LINE}")
 

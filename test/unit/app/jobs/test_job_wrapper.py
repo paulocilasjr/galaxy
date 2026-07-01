@@ -3,8 +3,6 @@ import os
 from contextlib import contextmanager
 from typing import (
     cast,
-    Dict,
-    Type,
     TYPE_CHECKING,
 )
 
@@ -16,6 +14,7 @@ from galaxy.jobs import (
     JobWrapper,
     TaskWrapper,
 )
+from galaxy.jobs.handler import BaseJobHandlerQueue
 from galaxy.model import (
     Base,
     Job,
@@ -54,14 +53,14 @@ class AbstractTestCases:
             job.tool_id = TEST_TOOL_ID
             job.user = User()
             job.object_store_id = "foo"
-            self.model_objects: Dict[Type[Base], Dict[int, Base]] = {Job: {345: job}}
+            self.model_objects: dict[type[Base], dict[int, Base]] = {Job: {345: job}}
             self.app.model.session = cast("scoped_session", MockContext(self.model_objects))
 
             self.app._toolbox = cast(ToolBox, MockToolbox(MockTool(self)))
             self.working_directory = os.path.join(self.test_directory, "working")
             self.app.object_store = cast(BaseObjectStore, MockObjectStore(self.working_directory))
 
-            self.queue = MockJobQueue(self.app)
+            self.queue = cast(BaseJobHandlerQueue, MockJobQueue(self.app))
             self.job = job
 
         def tearDown(self):
@@ -70,7 +69,9 @@ class AbstractTestCases:
         @contextmanager
         def _prepared_wrapper(self):
             wrapper = self._wrapper()
-            wrapper._get_tool_evaluator = lambda *args, **kwargs: MockEvaluator(wrapper.app, wrapper.tool, wrapper.get_job(), wrapper.working_directory)  # type: ignore[method-assign]
+            wrapper._get_tool_evaluator = lambda *args, **kwargs: MockEvaluator(  # type: ignore[method-assign]
+                wrapper.app, wrapper.tool, wrapper.get_job(), wrapper.working_directory
+            )
             wrapper.prepare()
             yield wrapper
 
@@ -95,7 +96,7 @@ class AbstractTestCases:
 
 class TestJobWrapper(AbstractTestCases.BaseWrapperTestCase):
     def _wrapper(self):
-        return JobWrapper(self.job, self.queue)  # type: ignore[arg-type]
+        return JobWrapper(self.job, self.queue)
 
 
 class TestTaskWrapper(AbstractTestCases.BaseWrapperTestCase):

@@ -1,9 +1,6 @@
 import logging
 import re
-from typing import (
-    Dict,
-    List,
-)
+from urllib.parse import quote
 
 from galaxy import util
 from galaxy.tool_shed.util import repository_util
@@ -77,7 +74,7 @@ def get_ctx_rev(app, tool_shed_url, name, owner, changeset_revision):
 
 
 def get_next_prior_import_or_install_required_dict_entry(
-    prior_required_dict: Dict[str, List[str]], processed_tsr_ids: List[str]
+    prior_required_dict: dict[str, list[str]], processed_tsr_ids: list[str]
 ):
     """
     This method is used in the Tool Shed when exporting a repository and its dependencies, and in Galaxy
@@ -153,7 +150,10 @@ def set_image_paths(app, text, encoded_repository_id=None, tool_shed_repository=
             # We're in the tool shed.
             route_to_images = f"/repository/static/images/{encoded_repository_id}"
         elif tool_shed_repository and tool_id and tool_version:
-            route_to_images = f"shed_tool_static/{tool_shed_repository.tool_shed}/{tool_shed_repository.owner}/{tool_shed_repository.name}/{tool_id}/{tool_version}"
+            route_to_images = quote(
+                f"shed_tool_static/{tool_shed_repository.tool_shed}/{tool_shed_repository.owner}/{tool_shed_repository.name}/{tool_id}/{tool_version}",
+                safe="/",
+            )
         else:
             raise Exception(
                 "encoded_repository_id or tool_shed_repository and tool_id and tool_version must be provided"

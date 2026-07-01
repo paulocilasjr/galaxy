@@ -1,5 +1,3 @@
-from typing import List
-
 from galaxy_test.base.populators import skip_without_tool
 from .test_scripts import BaseScriptsIntegrationTestCase
 
@@ -60,6 +58,7 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
 
     @skip_without_tool("test_data_source")
     def test_purge_errored_hdas(self):
+        self._skip_unless_postgres()
         history_id = self.dataset_populator.new_history()
         error_dataset = self.dataset_populator.new_error_dataset(history_id)
         assert not self.is_purged(history_id, error_dataset)
@@ -227,7 +226,7 @@ class TestScriptsPgCleanupIntegration(BaseScriptsIntegrationTestCase):
             )
         return details_response["purged"]
 
-    def _pgcleanup_check_output(self, extra_args: List[str]) -> str:
+    def _pgcleanup_check_output(self, extra_args: list[str]) -> str:
         config_file = self.write_config_file()
         output = self._scripts_check_output(SCRIPT, ["-c", config_file] + extra_args)
         print(output)

@@ -1,5 +1,5 @@
 <script setup>
-import { BAlert, BCollapse, BLink } from "bootstrap-vue";
+import { BAlert, BLink } from "bootstrap-vue";
 import { computed, ref, watch } from "vue";
 
 import { getArgs } from "@/components/Markdown/parse";
@@ -14,6 +14,7 @@ import { useConfig } from "@/composables/config";
 import { useInvocationStore } from "@/stores/invocationStore";
 import { useWorkflowStore } from "@/stores/workflowStore";
 
+import DatasetCollectionElementPicker from "./Elements/DatasetCollectionElementPicker.vue";
 import HistoryDatasetAsImage from "./Elements/HistoryDatasetAsImage.vue";
 import HistoryDatasetAsTable from "./Elements/HistoryDatasetAsTable.vue";
 import HistoryDatasetCollectionDisplay from "./Elements/HistoryDatasetCollection/CollectionDisplay.vue";
@@ -28,10 +29,11 @@ import JobMetrics from "./Elements/JobMetrics.vue";
 import JobParameters from "./Elements/JobParameters.vue";
 import TextContent from "./Elements/TextContent.vue";
 import ToolStd from "./Elements/ToolStd.vue";
-import VisualizationFrame from "./Elements/VisualizationFrame.vue";
 import WorkflowDisplay from "./Elements/Workflow/WorkflowDisplay.vue";
 import WorkflowImage from "./Elements/Workflow/WorkflowImage.vue";
 import WorkflowLicense from "./Elements/Workflow/WorkflowLicense.vue";
+import VisualizationWrapper from "./VisualizationWrapper.vue";
+import GCollapse from "@/components/BaseComponents/GCollapse.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 import WorkflowInvocationInputs from "@/components/WorkflowInvocationState/WorkflowInvocationInputs.vue";
 import WorkflowInvocationOutputs from "@/components/WorkflowInvocationState/WorkflowInvocationOutputs.vue";
@@ -59,9 +61,8 @@ const workflowLoading = ref(false);
 const args = computed(() => {
     if (invocation.value && workflowId.value) {
         return parseInvocation(invocation.value, workflowId.value, name.value, attributes.value.args);
-    } else {
-        return { ...attributes.value.args };
     }
+    return { ...attributes.value.args };
 });
 
 const hasLabels = computed(() => props.labels !== undefined);
@@ -74,6 +75,10 @@ const isLoading = computed(() => invocationLoading.value || workflowLoading.valu
 const isVisible = computed(() => !isCollapsible.value || toggle.value);
 const name = computed(() => attributes.value.name);
 const workflowId = computed(() => invocation.value && getStoredWorkflowIdByInstanceId(invocation.value.workflow_id));
+const compact = computed(() => Boolean(args.value?.compact));
+const showColumnHeaders = computed(() => {
+    return args.value?.show_column_headers !== undefined ? Boolean(args.value.show_column_headers) : true;
+});
 
 async function fetchWorkflow() {
     if (invocation.value?.workflow_id) {
@@ -101,13 +106,13 @@ function handleAttributes() {
 watch(
     () => props.content,
     () => handleAttributes(),
-    { immediate: true }
+    { immediate: true },
 );
 
 watch(
     () => invocation.value,
     () => fetchWorkflow(),
-    { immediate: true }
+    { immediate: true },
 );
 </script>
 
@@ -146,24 +151,31 @@ watch(
         <BLink v-if="isCollapsible" class="font-weight-bold" @click="toggle = !toggle">
             {{ args.collapse }}
         </BLink>
-        <BCollapse :visible="isVisible">
+        <GCollapse :visible="isVisible">
             <TextContent
                 v-if="name == 'generate_galaxy_version'"
                 class="galaxy-version"
                 :content="`Galaxy Version ${config.version_major}`" />
             <TextContent v-else-if="name == 'generate_time'" class="galaxy-time" :content="new Date().toUTCString()" />
             <HistoryDatasetAsImage
-                v-else-if="name == 'history_dataset_as_image'"
+                v-else-if="name == 'history_dataset_as_image' && args.history_dataset_id"
                 :dataset-id="args.history_dataset_id"
                 :path="args.path" />
+            <DatasetCollectionElementPicker
+                v-else-if="name == 'history_dataset_as_image' && args.history_dataset_collection_id"
+                :hdca-id="args.history_dataset_collection_id">
+                <template v-slot:element="{ element }">
+                    <HistoryDatasetAsImage v-if="element" :key="element" :dataset-id="element" :path="args.path" />
+                </template>
+            </DatasetCollectionElementPicker>
             <HistoryDatasetAsTable
-                v-else-if="name == 'history_dataset_as_table'"
-                :compact="argToBoolean(args, 'compact', false)"
+                v-else-if="name == 'history_dataset_as_table' && args.history_dataset_id"
+                :compact="compact"
                 :dataset-id="args.history_dataset_id"
                 :footer="args.footer"
-                :show-column-headers="argToBoolean(args, 'show_column_headers', true)"
+                :show-column-headers="showColumnHeaders"
                 :title="args.title"
-                :path="path" />
+                :path="args.path" />
             <HistoryDatasetCollectionDisplay
                 v-else-if="name == 'history_dataset_collection_display'"
                 :collection-id="args.history_dataset_collection_id" />
@@ -174,16 +186,18 @@ watch(
                         'history_dataset_info',
                         'history_dataset_peek',
                         'history_dataset_type',
-                    ].includes(name)
+                    ].includes(name) && args.history_dataset_id
                 "
                 :dataset-id="args.history_dataset_id"
                 :name="name" />
             <HistoryDatasetDisplay
-                v-else-if="['history_dataset_embedded', 'history_dataset_display'].includes(name)"
+                v-else-if="
+                    ['history_dataset_embedded', 'history_dataset_display'].includes(name) && args.history_dataset_id
+                "
                 :dataset-id="args.history_dataset_id"
                 :embedded="name == 'history_dataset_embedded'" />
             <HistoryDatasetIndex v-else-if="name == 'history_dataset_index'" :args="args" />
-            <HistoryDatasetLink v-else-if="name == 'history_dataset_link'" :args="args" />
+            <HistoryDatasetLink v-else-if="name == 'history_dataset_link' && args.history_dataset_id" :args="args" />
             <HistoryLink v-else-if="name == 'history_link'" :history-id="args.history_id" />
             <InstanceUrl
                 v-else-if="name == 'instance_access_link'"
@@ -235,7 +249,23 @@ watch(
                 :job-id="args.job_id"
                 :implicit-collection-jobs-id="args.implicit_collection_jobs_id"
                 :name="name" />
-            <VisualizationFrame v-else-if="name == 'visualization'" :args="args" />
+            <VisualizationWrapper
+                v-else-if="name == 'visualization' && !args.history_dataset_collection_id"
+                :name="args.visualization_id"
+                :config="{ dataset_id: args.history_dataset_id }"
+                :height="args.height && parseInt(args.height)" />
+            <DatasetCollectionElementPicker
+                v-else-if="name == 'visualization'"
+                :hdca-id="args.history_dataset_collection_id">
+                <template v-slot:element="{ element }">
+                    <VisualizationWrapper
+                        v-if="element"
+                        :key="element"
+                        :name="args.visualization_id"
+                        :config="{ dataset_id: element }"
+                        :height="args.height && parseInt(args.height)" />
+                </template>
+            </DatasetCollectionElementPicker>
             <WorkflowDisplay
                 v-else-if="name == 'workflow_display'"
                 :workflow-id="args.workflow_id"
@@ -246,6 +276,6 @@ watch(
                 :size="args.size || 'lg'"
                 :workflow-version="args.workflow_checkpoint || undefined" />
             <WorkflowLicense v-else-if="name == 'workflow_license'" :workflow-id="args.workflow_id" />
-        </BCollapse>
+        </GCollapse>
     </div>
 </template>

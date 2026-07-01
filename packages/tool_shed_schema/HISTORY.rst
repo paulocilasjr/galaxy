@@ -3,8 +3,68 @@ History
 
 .. to_doc
 
----------
-25.0.dev0
----------
+-------
+26.1rc1
+-------
 
-* Initial creation of package during 25.0 development cycle.
+
+
+-------------------
+26.0.1 (2026-06-04)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+26.0.0 (2026-04-08)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.2 (2026-03-09)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.1 (2026-02-03)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.1.0 (2025-12-12)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.4 (2025-11-18)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.3 (2025-09-23)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.2 (2025-08-13)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.1 (2025-06-20)
+-------------------
+
+No recorded changes since last release
+
+-------------------
+25.0.0 (2025-06-18)
+-------------------
+
+First release

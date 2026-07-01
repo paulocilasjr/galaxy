@@ -1,10 +1,7 @@
 import json
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
-    Union,
+    Literal,
 )
 
 from pydantic import (
@@ -13,7 +10,6 @@ from pydantic import (
     field_validator,
     UUID4,
 )
-from typing_extensions import Literal
 
 from galaxy.schema.fields import (
     DecodedDatabaseIdField,
@@ -45,7 +41,7 @@ class JobInputSummary(Model):
 # TODO: Use Tuple again when `make update-client-api-schema` supports them
 class JobErrorSummary(Model):
     # messages: List[Union[Tuple[str, str], List[str]]]
-    messages: List[List[str]] = Field(
+    messages: list[list[str]] = Field(
         default=...,
         title="Error messages",
         description="The error messages for the specified job.",
@@ -81,18 +77,31 @@ class JobOutputAssociation(JobAssociation):
     )
 
 
+class JobOutputCollectionAssociation(Model):
+    name: str = Field(
+        default=...,
+        title="name",
+        description="Name of the job parameter.",
+    )
+    dataset_collection_instance: EncodedDataItemSourceId = Field(
+        default=...,
+        title="dataset_collection_instance",
+        description="Reference to the associated item.",
+    )
+
+
 class ReportJobErrorPayload(Model):
     dataset_id: DecodedDatabaseIdField = Field(
         default=...,
         title="History Dataset Association ID",
         description="The History Dataset Association ID related to the error.",
     )
-    email: Optional[str] = Field(
+    email: str | None = Field(
         default=None,
         title="Email",
         description="Email address for communication with the user. Only required for anonymous users.",
     )
-    message: Optional[str] = Field(
+    message: str | None = Field(
         default=None,
         title="Message",
         description="The optional message sent with the error report.",
@@ -105,15 +114,20 @@ class SearchJobsPayload(Model):
         title="Tool ID",
         description="The tool ID related to the job.",
     )
-    inputs: Dict[str, Any] = Field(
+    inputs: dict[str, Any] = Field(
         default=...,
         title="Inputs",
         description="The inputs of the job.",
     )
-    state: Optional[JobState] = Field(
+    state: JobState | None = Field(
         default=None,
         title="State",
         description="Current state of the job.",
+    )
+    history_id: DecodedDatabaseIdField | None = Field(
+        default=None,
+        title="History ID",
+        description="The encoded ID of the history associated with this job.",
     )
     model_config = ConfigDict(extra="allow")  # This is used for items named file_ and __file_
 
@@ -126,7 +140,7 @@ class SearchJobsPayload(Model):
 
 
 class DeleteJobPayload(Model):
-    message: Optional[str] = Field(
+    message: str | None = Field(
         default=None,
         title="Job message",
         description="Stop message",
@@ -147,7 +161,7 @@ class EncodedHdcaSourceId(SrcItem):
 
 
 class EncodedDatasetJobInfo(EncodedDataItemSourceId):
-    uuid: Optional[UUID4] = Field(
+    uuid: UUID4 | None = Field(
         default=None,
         # TODO: also deprecate on python side, https://github.com/pydantic/pydantic/issues/2255
         json_schema_extra={"deprecated": True},
@@ -157,7 +171,7 @@ class EncodedDatasetJobInfo(EncodedDataItemSourceId):
 
 
 class EncodedJobDetails(JobSummary):
-    command_version: Optional[str] = Field(
+    command_version: str | None = Field(
         default=None,
         title="Command Version",
         description="Tool version indicated during job execution.",
@@ -170,38 +184,38 @@ class EncodedJobDetails(JobSummary):
             "The specific parameters depend on the tool itself."
         ),
     )
-    inputs: Dict[str, EncodedDatasetJobInfo] = Field(
+    inputs: dict[str, EncodedDatasetJobInfo] = Field(
         {},
         title="Inputs",
         description="Dictionary mapping all the tool inputs (by name) to the corresponding data references.",
     )
-    outputs: Dict[str, EncodedDatasetJobInfo] = Field(
+    outputs: dict[str, EncodedDatasetJobInfo] = Field(
         {},
         title="Outputs",
         description="Dictionary mapping all the tool outputs (by name) to the corresponding data references.",
     )
-    copied_from_job_id: Optional[EncodedDatabaseIdField] = Field(
+    copied_from_job_id: EncodedDatabaseIdField | None = Field(
         default=None,
         title="Copied from Job-ID",
         description="Reference to cached job if job execution was cached.",
     )
-    output_collections: Dict[str, EncodedHdcaSourceId] = Field(
+    output_collections: dict[str, EncodedHdcaSourceId] = Field(
         default={},
         title="Output collections",
         description="",
     )
-    user_id: Optional[EncodedDatabaseIdField] = Field(default=None, description="User ID of user that ran this job")
+    user_id: EncodedDatabaseIdField | None = Field(default=None, description="User ID of user that ran this job")
 
 
 class JobDestinationParams(Model):
-    runner: Optional[str] = Field(None, title="Runner", description="Job runner class", alias="Runner")
-    runner_job_id: Optional[str] = Field(
+    runner: str | None = Field(None, title="Runner", description="Job runner class", alias="Runner")
+    runner_job_id: str | None = Field(
         None,
         title="Runner Job ID",
         description="ID assigned to submitted job by external job running system",
         alias="Runner Job ID",
     )
-    handler: Optional[str] = Field(
+    handler: str | None = Field(
         None, title="Handler", description="Name of the process that handled the job.", alias="Handler"
     )
     model_config = ConfigDict(extra="allow")  # JobDestinationParams can have extra fields
@@ -213,9 +227,9 @@ class JobOutput(Model):
 
 
 class JobConsoleOutput(Model):
-    state: Optional[JobState] = Field(None, title="Job State", description="The current job's state")
-    stdout: Optional[str] = Field(None, title="STDOUT", description="Tool STDOUT from job.")
-    stderr: Optional[str] = Field(None, title="STDERR", description="Tool STDERR from job.")
+    state: JobState | None = Field(None, title="Job State", description="The current job's state")
+    stdout: str | None = Field(None, title="STDOUT", description="Tool STDOUT from job.")
+    stderr: str | None = Field(None, title="STDERR", description="Tool STDERR from job.")
 
 
 class JobParameter(Model):
@@ -229,20 +243,20 @@ class JobParameter(Model):
         title="Depth",
         description="The depth of the job parameter.",
     )
-    value: Optional[Union[List[Optional[EncodedJobParameterHistoryItem]], float, int, bool, str]] = Field(
+    value: list[EncodedJobParameterHistoryItem | None] | float | int | bool | str | None = Field(
         default=None, title="Value", description="The values of the job parameter", union_mode="left_to_right"
     )
-    notes: Optional[str] = Field(default=None, title="Notes", description="Notes associated with the job parameter.")
+    notes: str | None = Field(default=None, title="Notes", description="Notes associated with the job parameter.")
 
 
 class JobDisplayParametersSummary(Model):
-    parameters: List[JobParameter] = Field(
+    parameters: list[JobParameter] = Field(
         default=..., title="Parameters", description="The parameters of the job in a nested format."
     )
     has_parameter_errors: bool = Field(
         default=..., title="Has parameter errors", description="The job has parameter errors"
     )
-    outputs: Dict[str, List[JobOutput]] = Field(
+    outputs: dict[str, list[JobOutput]] = Field(
         default=...,
         title="Outputs",
         description="Dictionary mapping all the tool outputs (by name) with the corresponding dataset information in a nested format.",

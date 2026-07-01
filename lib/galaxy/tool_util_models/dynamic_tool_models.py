@@ -1,10 +1,6 @@
-from typing import (
-    Optional,
-    Union,
-)
+from typing import Literal
 
 from pydantic import BaseModel
-from typing_extensions import Literal
 
 from galaxy.tool_util_models import (
     DynamicToolSources,
@@ -13,18 +9,15 @@ from galaxy.tool_util_models import (
 
 
 class BaseDynamicToolCreatePayload(BaseModel):
-    active: Optional[bool] = None
-    hidden: Optional[bool] = None
-    uuid: Optional[str] = None
+    active: bool | None = None
+    hidden: bool | None = None
 
 
 class DynamicToolCreatePayload(BaseDynamicToolCreatePayload):
     src: Literal["representation"] = "representation"
     representation: DynamicToolSources
-    active: Optional[bool] = True
-    hidden: Optional[bool] = False
-    # TODO: split out, doesn't mean anything for unprivileged tools
-    allow_load: Optional[bool] = True
+    active: bool | None = True
+    hidden: bool | None = False
 
 
 class DynamicUnprivilegedToolCreatePayload(DynamicToolCreatePayload):
@@ -34,8 +27,7 @@ class DynamicUnprivilegedToolCreatePayload(DynamicToolCreatePayload):
 class PathBasedDynamicToolCreatePayload(BaseDynamicToolCreatePayload):
     src: Literal["from_path"]
     path: str
-    tool_directory: Optional[str] = None
-    allow_load: bool = True
+    tool_directory: str | None = None
 
 
-DynamicToolPayload = Union[DynamicToolCreatePayload, PathBasedDynamicToolCreatePayload]
+DynamicToolPayload = DynamicToolCreatePayload | PathBasedDynamicToolCreatePayload

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { library } from "@fortawesome/fontawesome-svg-core";
 import { faBug, faChartBar, faInfoCircle, faLink, faRedo, faSitemap } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import { BButton } from "bootstrap-vue";
@@ -14,8 +13,6 @@ import { absPath, prependPath } from "@/utils/redirect";
 import type { ItemUrls } from ".";
 
 import DatasetDownload from "@/components/History/Content/Dataset/DatasetDownload.vue";
-
-library.add(faBug, faChartBar, faInfoCircle, faLink, faRedo, faSitemap);
 
 interface Props {
     item: HDADetailed;
@@ -39,11 +36,23 @@ const showDownloads = computed(() => {
 const showError = computed(() => {
     return props.item.state === "error" || props.item.state === "failed_metadata";
 });
+const showInfo = computed(() => {
+    return props.item.accessible;
+});
+const showVisualizations = computed(() => {
+    return !props.item.purged && ["ok", "failed_metadata", "error"].includes(props.item.state);
+});
 const showRerun = computed(() => {
     return props.item.accessible && props.item.rerunnable && props.item.creating_job && props.item.state != "upload";
 });
 const reportErrorUrl = computed(() => {
     return prependPath(props.itemUrls.reportError!);
+});
+const showDetailsUrl = computed(() => {
+    return prependPath(props.itemUrls.showDetails!);
+});
+const visualizeUrl = computed(() => {
+    return prependPath(props.itemUrls.visualize!);
 });
 const rerunUrl = computed(() => {
     return prependPath(props.itemUrls.rerun!);
@@ -66,11 +75,19 @@ function onHighlight() {
 }
 
 function onError() {
-    window.location.href = reportErrorUrl.value;
+    router.push(`/datasets/${props.item.id}/error`);
+}
+
+function onInfo() {
+    router.push(`/datasets/${props.item.id}/details`);
+}
+
+function onVisualize() {
+    router.push(`/datasets/${props.item.id}/visualize`);
 }
 
 function onRerun() {
-    router.push(`/root?job_id=${props.item.creating_job}`);
+    router.push(`/?job_id=${props.item.creating_job}`);
 }
 </script>
 
@@ -80,7 +97,7 @@ function onRerun() {
             <div class="btn-group float-left">
                 <BButton
                     v-if="showError"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="px-1"
                     title="Error"
                     size="sm"
@@ -94,7 +111,7 @@ function onRerun() {
 
                 <BButton
                     v-if="showDownloads"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="px-1"
                     title="Copy Link"
                     size="sm"
@@ -104,8 +121,32 @@ function onRerun() {
                 </BButton>
 
                 <BButton
+                    v-if="showInfo"
+                    v-g-tooltip.hover
+                    class="info-btn px-1"
+                    title="Dataset Details"
+                    size="sm"
+                    variant="link"
+                    :href="showDetailsUrl"
+                    @click.prevent.stop="onInfo">
+                    <FontAwesomeIcon :icon="faInfoCircle" />
+                </BButton>
+
+                <BButton
+                    v-if="showVisualizations"
+                    v-g-tooltip.hover
+                    class="visualize-btn px-1"
+                    title="Visualize"
+                    size="sm"
+                    variant="link"
+                    :href="visualizeUrl"
+                    @click.prevent.stop="onVisualize">
+                    <FontAwesomeIcon :icon="faChartBar" />
+                </BButton>
+
+                <BButton
                     v-if="showHighlight"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="highlight-btn px-1"
                     title="Show Related Items"
                     size="sm"
@@ -116,7 +157,7 @@ function onRerun() {
 
                 <BButton
                     v-if="writable && showRerun"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     class="rerun-btn px-1"
                     title="Run Job Again"
                     size="sm"

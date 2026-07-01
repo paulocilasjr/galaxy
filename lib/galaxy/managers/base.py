@@ -26,23 +26,18 @@ attribute change to a model object.
 #   such as: a single flat class, serializers being singletons in the manager, etc.
 #   instead of the three separate classes. With no 'apparent' perfect scheme
 #   I'm opting to just keep them separate.
+import builtins
 import datetime
 import logging
 import re
+from collections.abc import Callable
 from functools import partial
 from typing import (
     Any,
-    Callable,
-    Dict,
     Generic,
-    List,
     NamedTuple,
-    Optional,
-    Set,
-    Tuple,
-    Type,
+    TYPE_CHECKING,
     TypeVar,
-    Union,
 )
 
 import sqlalchemy
@@ -69,6 +64,9 @@ from galaxy.structured_app import (
     MinimalManagerApp,
 )
 
+if TYPE_CHECKING:
+    from galaxy.managers.context import ProvidesAppContext
+
 log = logging.getLogger(__name__)
 
 
@@ -79,10 +77,10 @@ class ParsedFilter(NamedTuple):
 
 
 parsed_filter = ParsedFilter
-OrmFilterParserType = Union[None, Dict[str, Any], Callable]
-OrmFilterParsersType = Dict[str, OrmFilterParserType]
-FunctionFilterParserType = Dict[str, Any]
-FunctionFilterParsersType = Dict[str, Any]
+OrmFilterParserType = None | dict[str, Any] | Callable
+OrmFilterParsersType = dict[str, OrmFilterParserType]
+FunctionFilterParserType = dict[str, Any]
+FunctionFilterParsersType = dict[str, Any]
 
 
 # ==== accessors from base/controller.py
@@ -149,21 +147,28 @@ def get_class(class_name):
     return item_class
 
 
-def decode_id(app: BasicSharedApp, id: Any, kind: Optional[str] = None) -> int:
+def decode_id(app: BasicSharedApp, id: Any, kind: str | None = None) -> int:
     # note: use str - occasionally a fully numeric id will be placed in post body and parsed as int via JSON
     #   resulting in error for valid id
     return decode_with_security(app.security, id, kind=kind)
 
 
-def decode_with_security(security: IdEncodingHelper, id: Any, kind: Optional[str] = None):
+def decode_with_security(security: IdEncodingHelper, id: Any, kind: str | None = None):
     return security.decode_id(str(id), kind=kind)
 
 
-def encode_with_security(security: IdEncodingHelper, id: Any, kind: Optional[str] = None):
+def encode_with_security(security: IdEncodingHelper, id: Any, kind: str | None = None):
     return security.encode_id(id, kind=kind)
 
 
-def get_object(trans, id, class_name, check_ownership=False, check_accessible=False, deleted=None):
+def get_object(
+    trans: "ProvidesAppContext",
+    id,
+    class_name,
+    check_ownership: bool = False,
+    check_accessible: bool = False,
+    deleted: bool | None = None,
+):
     """
     Convenience method to get a model object with the specified checks. This is
     a generic method for dealing with objects uniformly from the older
@@ -174,7 +179,7 @@ def get_object(trans, id, class_name, check_ownership=False, check_accessible=Fa
     try:
         item_class = get_class(class_name)
         assert item_class is not None
-        item = trans.sa_session.query(item_class).get(decoded_id)
+        item = trans.sa_session.get(item_class, decoded_id)
         assert item is not None
     except Exception:
         log.warning(f"Invalid {class_name} id ( {id} ) specified.")
@@ -204,7 +209,7 @@ class ModelManager(Generic[U]):
     over the ORM.
     """
 
-    model_class: Type[U]
+    model_class: type[U]
     foreign_key_name: str
     app: BasicSharedApp
 
@@ -229,8 +234,8 @@ class ModelManager(Generic[U]):
         eagerloads: bool = True,
         filters=None,
         order_by=None,
-        limit: Optional[int] = None,
-        offset: Optional[int] = None,
+        limit: int | None = None,
+        offset: int | None = None,
     ) -> Query:
         """
         Return a basic query from model_class, filters, order_by, and limit and offset.
@@ -244,7 +249,7 @@ class ModelManager(Generic[U]):
         return self._filter_and_order_query(query, filters=filters, order_by=order_by, limit=limit, offset=offset)
 
     def _filter_and_order_query(
-        self, query: Query, filters=None, order_by=None, limit: Optional[int] = None, offset: Optional[int] = None
+        self, query: Query, filters=None, order_by=None, limit: int | None = None, offset: int | None = None
     ) -> Query:
         # TODO: not a lot of functional cohesion here
         query = self._apply_orm_filters(query, filters)
@@ -287,7 +292,7 @@ class ModelManager(Generic[U]):
         """
         return (self.model_class.__table__.c.create_time,)
 
-    def _apply_orm_limit_offset(self, query: Query, limit: Optional[int], offset: Optional[int]) -> Query:
+    def _apply_orm_limit_offset(self, query: Query, limit: int | None, offset: int | None) -> Query:
         """
         Return the query after applying the given limit and offset (if not None).
         """
@@ -402,7 +407,7 @@ class ModelManager(Generic[U]):
                 orm_filters.append(filter_.filter)
         return (orm_filters, fn_filters)
 
-    def _orm_list(self, query: Optional[Query] = None, **kwargs) -> List[U]:
+    def _orm_list(self, query: Query | None = None, **kwargs) -> builtins.list[U]:
         """
         Sends kwargs to build the query return all models found.
         """
@@ -498,7 +503,7 @@ class ModelManager(Generic[U]):
         """
         raise exceptions.NotImplemented("Abstract method")
 
-    def update(self, item: U, new_values: Dict[str, Any], flush: bool = True, **kwargs) -> U:
+    def update(self, item: U, new_values: dict[str, Any], flush: bool = True, **kwargs) -> U:
         """
         Given a dictionary of new values, update `item` and return it.
 
@@ -550,7 +555,7 @@ class HasAModelManager(Generic[T]):
     """
 
     #: the class used to create this serializer's generically accessible model_manager
-    model_manager_class: Type[
+    model_manager_class: type[
         T
     ]  # ideally this would be Type[ModelManager] but HistoryContentsManager cannot be a ModelManager
     # examples where this doesn't really work are ConfigurationSerializer (no manager)
@@ -619,8 +624,8 @@ class ModelSerializer(HasAModelManager[T]):
         item_dict = MySerializer.serialize( my_item, keys_to_serialize )
     """
 
-    default_view: Optional[str]
-    views: Dict[str, List[str]]
+    default_view: str | None
+    views: dict[str, list[str]]
 
     def __init__(self, app: MinimalManagerApp, **kwargs):
         """
@@ -632,9 +637,9 @@ class ModelSerializer(HasAModelManager[T]):
         #   this allows us to: 'mention' the key without adding the default serializer
         # TODO: we may want to eventually error if a key is requested
         #   that is in neither serializable_keyset or serializers
-        self.serializable_keyset: Set[str] = set()
+        self.serializable_keyset: set[str] = set()
         # a map of dictionary keys to the functions (often lambdas) that create the values for those keys
-        self.serializers: Dict[str, Serializer] = {}
+        self.serializers: dict[str, Serializer] = {}
         # add subclass serializers defined there
         self.add_serializers()
         # update the keyset by the serializers (removing the responsibility from subclasses)
@@ -803,7 +808,7 @@ class ModelValidator:
     """
 
     @staticmethod
-    def matches_type(key: str, val: Any, types: Union[type, Tuple[Union[type, Tuple[Any, ...]], ...]]):
+    def matches_type(key: str, val: Any, types: type | tuple[type | tuple[Any, ...], ...]):
         """
         Check `val` against the type (or tuple of types) in `types`.
 
@@ -831,7 +836,7 @@ class ModelValidator:
         return ModelValidator.matches_type(key, val, ((str,), type(None)))
 
     @staticmethod
-    def int_range(key: str, val: Any, min: Optional[int] = None, max: Optional[int] = None) -> int:
+    def int_range(key: str, val: Any, min: int | None = None, max: int | None = None) -> int:
         """
         Must be a int between min and max.
         """
@@ -843,7 +848,7 @@ class ModelValidator:
         return val_
 
     @staticmethod
-    def basestring_list(key: str, val: Any) -> List[str]:
+    def basestring_list(key: str, val: Any) -> list[str]:
         """
         Must be a list of basestrings.
         """
@@ -899,8 +904,8 @@ class ModelDeserializer(HasAModelManager[T]):
         """
         super().__init__(app, **kwargs)
 
-        self.deserializers: Dict[str, Deserializer] = {}
-        self.deserializable_keyset: Set[str] = set()
+        self.deserializers: dict[str, Deserializer] = {}
+        self.deserializable_keyset: set[str] = set()
         self.add_deserializers()
 
     def add_deserializers(self):
@@ -994,7 +999,7 @@ class ModelFilterParser(HasAModelManager):
     # (as the model informs how the filter params are parsed)
     # I have no great idea where this 'belongs', so it's here for now
 
-    model_class: Type[model._HasTable]
+    model_class: type[model._HasTable]
     parsed_filter = parsed_filter
     orm_filter_parsers: OrmFilterParsersType
     fn_filter_parsers: FunctionFilterParsersType
@@ -1044,7 +1049,7 @@ class ModelFilterParser(HasAModelManager):
         filter_attr_key: str = "q",
         filter_value_key: str = "qv",
         attr_op_split_char: str = "-",
-    ) -> List[Tuple[str, str, str]]:
+    ) -> list[tuple[str, str, str]]:
         """
         Builds a list of tuples containing filtering information in the form of (attribute, operator, value).
         """
@@ -1146,7 +1151,7 @@ class ModelFilterParser(HasAModelManager):
         return self.parsed_filter(filter_type="function", filter=lambda i: filter_fn(i, val))
 
     # ---- ORM filters
-    def _parse_orm_filter(self, attr, op, val) -> Optional[ParsedFilter]:
+    def _parse_orm_filter(self, attr, op, val) -> ParsedFilter | None:
         """
         Attempt to parse a ORM-based filter.
 
@@ -1246,32 +1251,36 @@ class ModelFilterParser(HasAModelManager):
         int_list = [int(v) for v in int_list_string.split(sep)]
         return int_list
 
-    def parse_date(self, date_string):
+    def parse_date(self, date_string: str) -> datetime.datetime:
         """
-        Reformats a string containing either seconds from epoch or an iso8601 formated
-        date string into a new date string usable within a filter query.
+        Parses a string containing either seconds from epoch or an iso8601 formatted
+        date string into a datetime object usable within a filter query.
 
         Seconds from epoch can be a floating point value as well (i.e containing ms).
+
+        Returns a ``datetime.datetime`` so that SQLAlchemy binds a proper
+        timestamp parameter — required by psycopg3 which does not implicitly
+        cast VARCHAR to TIMESTAMP the way psycopg2 did.
         """
         # assume it's epoch if no date separator is present
         try:
             epoch = float(date_string)
-            datetime_obj = datetime.datetime.fromtimestamp(epoch)
-            return datetime_obj.isoformat(sep=" ")
+            return datetime.datetime.fromtimestamp(epoch)
         except ValueError:
             pass
 
         if match := self.date_string_re.match(date_string):
-            date_string = " ".join(group for group in match.groups() if group)
-            return date_string
+            date_part = match.group(1)
+            time_part = match.group(2) or "00:00:00"
+            return datetime.datetime.fromisoformat(f"{date_part}T{time_part}")
         raise ValueError("datetime strings must be in the ISO 8601 format and in the UTC")
 
-    def contains_non_orm_filter(self, filters: List[ParsedFilter]) -> bool:
+    def contains_non_orm_filter(self, filters: list[ParsedFilter]) -> bool:
         """Whether the list of filters contains any non-orm filter."""
         return any(filter.filter_type == "function" for filter in filters)
 
 
-def parse_bool(bool_string: Union[str, bool]) -> bool:
+def parse_bool(bool_string: str | bool) -> bool:
     """
     Parse a boolean from a string.
     """
@@ -1303,7 +1312,7 @@ class StorageCleanerManager(Protocol):
 
     # TODO: refactor this interface to be more generic and allow for more types of cleanable items
 
-    sort_map: Dict[StoredItemOrderBy, Any]
+    sort_map: dict[StoredItemOrderBy, Any]
 
     def get_discarded_summary(self, user: model.User) -> CleanableItemsSummary:
         """Returns information with the total storage space taken by discarded items for the given user.
@@ -1315,10 +1324,10 @@ class StorageCleanerManager(Protocol):
     def get_discarded(
         self,
         user: model.User,
-        offset: Optional[int],
-        limit: Optional[int],
-        order: Optional[StoredItemOrderBy],
-    ) -> List[StoredItem]:
+        offset: int | None,
+        limit: int | None,
+        order: StoredItemOrderBy | None,
+    ) -> list[StoredItem]:
         """Returns a paginated list of items deleted by the given user that are not yet purged."""
         raise NotImplementedError
 
@@ -1333,19 +1342,19 @@ class StorageCleanerManager(Protocol):
     def get_archived(
         self,
         user: model.User,
-        offset: Optional[int],
-        limit: Optional[int],
-        order: Optional[StoredItemOrderBy],
-    ) -> List[StoredItem]:
+        offset: int | None,
+        limit: int | None,
+        order: StoredItemOrderBy | None,
+    ) -> list[StoredItem]:
         """Returns a paginated list of items archived by the given user that are not yet purged."""
         raise NotImplementedError
 
-    def cleanup_items(self, user: model.User, item_ids: Set[int]) -> StorageItemsCleanupResult:
+    def cleanup_items(self, user: model.User, item_ids: set[int]) -> StorageItemsCleanupResult:
         """Purges the given list of items by ID. The items must be owned by the user."""
         raise NotImplementedError
 
 
-def combine_lists(listA: Any, listB: Any) -> List:
+def combine_lists(listA: Any, listB: Any) -> list:
     """
     Combine two lists into a single list.
 

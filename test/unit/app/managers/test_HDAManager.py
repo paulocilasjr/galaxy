@@ -231,8 +231,7 @@ class TestHDAManager(HDATestCase):
             )
 
         self.log(
-            "a copy of a restricted dataset in another users history should be inaccessible even to "
-            "the histories owner"
+            "a copy of a restricted dataset in another users history should be inaccessible even to the histories owner"
         )
         history2 = self.history_manager.create(name="history2", user=non_owner)
         self.trans.set_history(history2)
@@ -412,7 +411,7 @@ class TestHDASerializer(HDATestCase):
         assert isinstance(serialized["file_size"], int)
         assert isinstance(serialized["nice_size"], str)
         # TODO: these should be tested w/copy
-        assert isinstance(serialized["copied_from_history_dataset_association_id"], int)
+        self.assertNullableEncodedId(serialized["copied_from_history_dataset_association_id"])
         self.assertNullableEncodedId(serialized["copied_from_library_dataset_dataset_association_id"])
         self.assertNullableBasestring(serialized["info"])
         self.assertNullableBasestring(serialized["blurb"])
@@ -446,7 +445,6 @@ class TestHDASerializer(HDATestCase):
         assert serialized["type"] == "file"
 
         assert isinstance(serialized["url"], str)
-        assert isinstance(serialized["urls"], dict)
         assert isinstance(serialized["download_url"], str)
 
         self.log("serialized should jsonify well")

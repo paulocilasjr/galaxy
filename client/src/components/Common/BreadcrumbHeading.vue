@@ -1,5 +1,8 @@
 <script setup lang="ts">
-import { RouterLink } from "vue-router";
+import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { BLink } from "bootstrap-vue";
+import type { RawLocation } from "vue-router";
+import { useRouter } from "vue-router/composables";
 
 import type { BreadcrumbItem } from "@/components/Common/index";
 import localize from "@/utils/localization";
@@ -7,26 +10,35 @@ import localize from "@/utils/localization";
 import Heading from "@/components/Common/Heading.vue";
 
 interface Props {
+    /** Array of items to display in the breadcrumb */
     items: BreadcrumbItem[];
 }
 
 const props = defineProps<Props>();
+
+const router = useRouter();
+
+function isPathActive(path: RawLocation): boolean {
+    return router.currentRoute.path === router.resolve(path).route.path;
+}
 </script>
 
 <template>
     <div class="breadcrumb-heading mb-2">
         <Heading h1 separator inline size="lg" class="breadcrumb-heading-header mr-2 mb-0">
             <template v-for="(item, index) in props.items">
-                <RouterLink
-                    v-if="item.to"
+                <BLink
+                    v-if="item.to && !isPathActive(item.to)"
                     :key="index"
-                    v-b-tooltip.hover.bottom.noninteractive
+                    v-g-tooltip.hover.bottom
                     :title="`Go back to ${localize(item.title)}`"
                     :to="item.to"
                     class="breadcrumb-heading-header-active">
+                    <FontAwesomeIcon v-if="item.icon" :icon="item.icon" />
                     {{ localize(item.title) }}
-                </RouterLink>
+                </BLink>
                 <span v-else :key="'else-' + index" class="breadcrumb-heading-header-inactive">
+                    <FontAwesomeIcon v-if="item.icon" :icon="item.icon" />
                     {{ localize(item.title) }}
                 </span>
 
@@ -36,7 +48,7 @@ const props = defineProps<Props>();
                     </sup>
                 </template>
 
-                <template v-if="index < items.length - 1"> / </template>
+                <span v-if="index < items.length - 1" :key="'sep-' + index" class="breadcrumb-separator"> / </span>
             </template>
         </Heading>
 
@@ -50,11 +62,22 @@ const props = defineProps<Props>();
 
     .breadcrumb-heading-header {
         flex-grow: 1;
+        min-width: 0;
+
+        :deep(.separator) {
+            grid-template-columns: 1rem 1fr 1rem;
+        }
+
+        :deep(h1) {
+            overflow: hidden;
+        }
 
         .breadcrumb-heading-header-active {
+            min-width: 0;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
+            flex-shrink: 1;
 
             &:hover {
                 cursor: pointer;
@@ -62,12 +85,18 @@ const props = defineProps<Props>();
         }
 
         .breadcrumb-heading-header-inactive {
+            white-space: nowrap;
             flex-shrink: 0;
-            margin-left: auto;
+        }
+
+        .breadcrumb-separator {
+            flex-shrink: 0;
         }
 
         .breadcrumb-heading-header-beta {
-            color: #717273;
+            color: var(--color-grey-500);
+            white-space: nowrap;
+            flex-shrink: 0;
         }
     }
 }

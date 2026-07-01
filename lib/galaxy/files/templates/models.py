@@ -1,19 +1,13 @@
 from typing import (
+    Annotated,
     Any,
-    Dict,
-    List,
-    Optional,
-    Type,
-    Union,
+    Literal,
 )
 
 from pydantic import (
     Field,
+    model_validator,
     RootModel,
-)
-from typing_extensions import (
-    Annotated,
-    Literal,
 )
 
 from galaxy.util.config_templates import (
@@ -41,23 +35,33 @@ FileSourceTemplateType = Literal[
     "posix",
     "s3fs",
     "azure",
+    "azureflat",
+    "irods",
     "onedata",
     "webdav",
     "dropbox",
     "googledrive",
+    "onedrive",
     "elabftw",
     "inveniordm",
     "zenodo",
     "rspace",
+    "dataverse",
+    "cbioportal",
+    "huggingface",
+    "iiif",
+    "mavedb",
+    "omero",
+    "ssh",
 ]
 
 
 class PosixFileSourceTemplateConfiguration(StrictModel):
     type: Literal["posix"]
-    root: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = False
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    root: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class PosixFileSourceConfiguration(StrictModel):
@@ -67,17 +71,17 @@ class PosixFileSourceConfiguration(StrictModel):
 
 
 class OAuth2TemplateConfiguration:
-    oauth2_client_id: Union[str, TemplateExpansion]
-    oauth2_client_secret: Union[str, TemplateExpansion]
+    oauth2_client_id: str | TemplateExpansion
+    oauth2_client_secret: str | TemplateExpansion
 
 
 class DropboxFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, StrictModel):
     type: Literal["dropbox"]
-    writable: Union[bool, TemplateExpansion] = False
-    oauth2_client_id: Union[str, TemplateExpansion]
-    oauth2_client_secret: Union[str, TemplateExpansion]
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    writable: bool | TemplateExpansion = False
+    oauth2_client_id: str | TemplateExpansion
+    oauth2_client_secret: str | TemplateExpansion
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class OAuth2FileSourceConfiguration:
@@ -92,9 +96,9 @@ class DropboxFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictModel)
 
 class GoogleDriveFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, StrictModel):
     type: Literal["googledrive"]
-    writable: Union[bool, TemplateExpansion] = False
-    oauth2_client_id: Union[str, TemplateExpansion]
-    oauth2_client_secret: Union[str, TemplateExpansion]
+    writable: bool | TemplateExpansion = False
+    oauth2_client_id: str | TemplateExpansion
+    oauth2_client_secret: str | TemplateExpansion
     # Will default to https://www.googleapis.com/auth/drive.file, which provides
     # access to a folder specific to your Galaxy instance. Ideally we would use
     # https://www.googleapis.com/auth/drive but that would require becoming
@@ -103,9 +107,9 @@ class GoogleDriveFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, St
     # work in the context of an open source project like Galaxy, I am
     # adding the extension point here for the brave individual that would like
     # to use it but I expect it isn't practical for the typical admin.
-    oauth2_scope: Optional[Union[str, TemplateExpansion]] = None
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    oauth2_scope: str | TemplateExpansion | None = None
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class GoogleDriveFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictModel):
@@ -114,57 +118,108 @@ class GoogleDriveFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictMo
     oauth2_access_token: str
 
 
+class OneDriveFileSourceTemplateConfiguration(OAuth2TemplateConfiguration, StrictModel):
+    type: Literal["onedrive"]
+    writable: bool | TemplateExpansion = False
+    oauth2_client_id: str | TemplateExpansion
+    oauth2_client_secret: str | TemplateExpansion
+    # Microsoft Graph app-folder scope keeps access limited to Apps/<Application Name>.
+    oauth2_scope: str | TemplateExpansion | None = None
+    drive_mode: Literal["appfolder", "full"] | TemplateExpansion = "appfolder"
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class OneDriveFileSourceConfiguration(OAuth2FileSourceConfiguration, StrictModel):
+    type: Literal["onedrive"]
+    writable: bool = False
+    oauth2_access_token: str
+    drive_mode: Literal["appfolder", "full"] = "appfolder"
+
+
 class S3FSFileSourceTemplateConfiguration(StrictModel):
     type: Literal["s3fs"]
-    endpoint_url: Optional[Union[str, TemplateExpansion]] = None
-    anon: Optional[Union[bool, TemplateExpansion]] = False
-    secret: Optional[Union[str, TemplateExpansion]] = None
-    key: Optional[Union[str, TemplateExpansion]] = None
-    bucket: Optional[Union[str, TemplateExpansion]] = None
-    writable: Union[bool, TemplateExpansion] = False
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    endpoint_url: str | TemplateExpansion | None = None
+    anon: bool | TemplateExpansion | None = False
+    secret: str | TemplateExpansion | None = None
+    key: str | TemplateExpansion | None = None
+    bucket: str | TemplateExpansion | None = None
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+    request_checksum_calculation: str | TemplateExpansion | None = None
 
 
 class S3FSFileSourceConfiguration(StrictModel):
     type: Literal["s3fs"]
-    endpoint_url: Optional[str] = None
-    anon: Optional[bool] = False
-    secret: Optional[str] = None
-    key: Optional[str] = None
-    bucket: Optional[str] = None
+    endpoint_url: str | None = None
+    anon: bool | None = False
+    secret: str | None = None
+    key: str | None = None
+    bucket: str | None = None
     writable: bool = False
+    request_checksum_calculation: str | None = None
 
 
 class FtpFileSourceTemplateConfiguration(StrictModel):
     type: Literal["ftp"]
-    host: Union[str, TemplateExpansion]
-    port: Union[int, TemplateExpansion] = 21
-    user: Optional[Union[str, TemplateExpansion]] = None
-    passwd: Optional[Union[str, TemplateExpansion]] = None
-    writable: Union[bool, TemplateExpansion] = False
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    host: str | TemplateExpansion
+    port: int | TemplateExpansion = 21
+    user: str | TemplateExpansion | None = None
+    passwd: str | TemplateExpansion | None = None
+    writable: bool | TemplateExpansion = False
+    tls: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class FtpFileSourceConfiguration(StrictModel):
     type: Literal["ftp"]
     host: str
     port: int = 21
-    user: Optional[str] = None
-    passwd: Optional[str] = None
+    user: str | None = None
+    passwd: str | None = None
+    writable: bool = False
+    tls: bool = False
+
+
+class SshFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["ssh"]
+    host: str | TemplateExpansion
+    user: str | TemplateExpansion | None = None
+    passwd: str | TemplateExpansion | None = None
+    pkey: str | TemplateExpansion | None = None
+    timeout: int | TemplateExpansion = 10
+    port: int | TemplateExpansion = 22
+    compress: bool | TemplateExpansion = False
+    path: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class SshFileSourceConfiguration(StrictModel):
+    type: Literal["ssh"]
+    host: str
+    user: str | None = None
+    passwd: str | None = None
+    pkey: str | None = None
+    timeout: int = 10
+    port: int = 22
+    compress: bool = False
+    path: str
     writable: bool = False
 
 
 class AzureFileSourceTemplateConfiguration(StrictModel):
     type: Literal["azure"]
-    account_name: Union[str, TemplateExpansion]
-    container_name: Union[str, TemplateExpansion]
-    account_key: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = False
-    namespace_type: Union[str, TemplateExpansion] = "hierarchical"
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    account_name: str | TemplateExpansion
+    container_name: str | TemplateExpansion
+    account_key: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    namespace_type: str | TemplateExpansion = "hierarchical"
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class AzureFileSourceConfiguration(StrictModel):
@@ -176,14 +231,60 @@ class AzureFileSourceConfiguration(StrictModel):
     writable: bool = False
 
 
+class AzureFlatFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["azureflat"]
+    account_name: str | TemplateExpansion
+    container_name: str | TemplateExpansion | None = None
+    account_key: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class AzureFlatFileSourceConfiguration(StrictModel):
+    type: Literal["azureflat"]
+    account_name: str
+    container_name: str | None = None
+    account_key: str
+    writable: bool = False
+
+
+class IrodsFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["irods"]
+    host: str | TemplateExpansion
+    port: int | TemplateExpansion = 1247
+    username: str | TemplateExpansion
+    password: str | TemplateExpansion
+    zone: str | TemplateExpansion
+    root: str | TemplateExpansion | None = None
+    timeout: int | TemplateExpansion = 30
+    refresh_time: int | TemplateExpansion = 300
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class IrodsFileSourceConfiguration(StrictModel):
+    type: Literal["irods"]
+    host: str
+    port: int = 1247
+    username: str
+    password: str
+    zone: str
+    root: str | None = None
+    timeout: int = 30
+    refresh_time: int = 300
+    writable: bool = False
+
+
 class OnedataFileSourceTemplateConfiguration(StrictModel):
     type: Literal["onedata"]
-    access_token: Union[str, TemplateExpansion]
-    onezone_domain: Union[str, TemplateExpansion]
-    disable_tls_certificate_validation: Union[bool, TemplateExpansion] = False
-    writable: Union[bool, TemplateExpansion] = False
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    access_token: str | TemplateExpansion
+    onezone_domain: str | TemplateExpansion
+    disable_tls_certificate_validation: bool | TemplateExpansion = False
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class OnedataFileSourceConfiguration(StrictModel):
@@ -194,20 +295,33 @@ class OnedataFileSourceConfiguration(StrictModel):
     writable: bool = False
 
 
-class WebdavFileSourceTemplateConfiguration(StrictModel):
-    type: Literal["webdav"]
-    url: Union[str, TemplateExpansion]
-    root: Union[str, TemplateExpansion]
-    login: Union[str, TemplateExpansion]
-    password: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = False
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+class WebdavConfigMixin:
+    @model_validator(mode="before")
+    @classmethod
+    def ensure_base_url(cls, data: Any) -> Any:
+        # Accept the version-0 WebDAV template's `url` field as an alias of
+        # `base_url` so that v0 templates and any persisted v0 rendered configs
+        # continue to validate after the rename.
+        if isinstance(data, dict) and "base_url" not in data and "url" in data:
+            data = dict(data)
+            data["base_url"] = data.pop("url")
+        return data
 
 
-class WebdavFileSourceConfiguration(StrictModel):
+class WebdavFileSourceTemplateConfiguration(WebdavConfigMixin, StrictModel):
     type: Literal["webdav"]
-    url: str
+    base_url: str | TemplateExpansion
+    root: str | TemplateExpansion
+    login: str | TemplateExpansion
+    password: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class WebdavFileSourceConfiguration(WebdavConfigMixin, StrictModel):
+    type: Literal["webdav"]
+    base_url: str
     root: str
     login: str
     password: str
@@ -216,11 +330,11 @@ class WebdavFileSourceConfiguration(StrictModel):
 
 class eLabFTWFileSourceTemplateConfiguration(StrictModel):  # noqa
     type: Literal["elabftw"]
-    endpoint: Union[str, TemplateExpansion]
-    api_key: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = True
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    endpoint: str | TemplateExpansion
+    api_key: str | TemplateExpansion
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class eLabFTWFileSourceConfiguration(StrictModel):  # noqa
@@ -232,12 +346,12 @@ class eLabFTWFileSourceConfiguration(StrictModel):  # noqa
 
 class InvenioFileSourceTemplateConfiguration(StrictModel):
     type: Literal["inveniordm"]
-    url: Union[str, TemplateExpansion]
-    public_name: Union[str, TemplateExpansion]
-    token: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = True
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    url: str | TemplateExpansion
+    public_name: str | TemplateExpansion
+    token: str | TemplateExpansion
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class InvenioFileSourceConfiguration(StrictModel):
@@ -250,12 +364,12 @@ class InvenioFileSourceConfiguration(StrictModel):
 
 class ZenodoFileSourceTemplateConfiguration(StrictModel):
     type: Literal["zenodo"]
-    url: Union[str, TemplateExpansion]
-    public_name: Union[str, TemplateExpansion]
-    token: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = True
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    url: str | TemplateExpansion
+    public_name: str | TemplateExpansion
+    token: str | TemplateExpansion
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class ZenodoFileSourceConfiguration(StrictModel):
@@ -268,11 +382,11 @@ class ZenodoFileSourceConfiguration(StrictModel):
 
 class RSpaceFileSourceTemplateConfiguration(StrictModel):
     type: Literal["rspace"]
-    endpoint: Union[str, TemplateExpansion]
-    api_key: Union[str, TemplateExpansion]
-    writable: Union[bool, TemplateExpansion] = True
-    template_start: Optional[str] = None
-    template_end: Optional[str] = None
+    endpoint: str | TemplateExpansion
+    api_key: str | TemplateExpansion
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
 
 
 class RSpaceFileSourceConfiguration(StrictModel):
@@ -282,39 +396,151 @@ class RSpaceFileSourceConfiguration(StrictModel):
     writable: bool = True
 
 
+class DataverseFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["dataverse"]
+    url: str | TemplateExpansion
+    public_name: str | TemplateExpansion
+    token: str | TemplateExpansion
+    writable: bool | TemplateExpansion = True
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class DataverseFileSourceConfiguration(StrictModel):
+    type: Literal["dataverse"]
+    url: str
+    public_name: str
+    token: str
+    writable: bool = True
+
+
+class CBioPortalFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["cbioportal"]
+    api_url: str | TemplateExpansion
+    datahub_url: str | TemplateExpansion
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class CBioPortalFileSourceConfiguration(StrictModel):
+    type: Literal["cbioportal"]
+    api_url: str
+    datahub_url: str
+    writable: bool = False
+
+
+class HuggingFaceFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["huggingface"]
+    token: str | TemplateExpansion | None = None
+    endpoint: str | TemplateExpansion | None = None
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class HuggingFaceFileSourceConfiguration(StrictModel):
+    type: Literal["huggingface"]
+    token: str | None = None
+    endpoint: str | None = None
+
+
+class IIIFFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["iiif"]
+    manifest_url: str | TemplateExpansion
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class IIIFFileSourceConfiguration(StrictModel):
+    type: Literal["iiif"]
+    manifest_url: str
+
+
+class MaveDBFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["mavedb"]
+    base_url: str | TemplateExpansion = "https://api.mavedb.org/api/v1"
+    api_key: str | TemplateExpansion | None = None
+    timeout: float | TemplateExpansion = 30.0
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class MaveDBFileSourceConfiguration(StrictModel):
+    type: Literal["mavedb"]
+    base_url: str = "https://api.mavedb.org/api/v1"
+    api_key: str | None = None
+    timeout: float = 30.0
+
+
+class OmeroFileSourceTemplateConfiguration(StrictModel):
+    type: Literal["omero"]
+    username: str | TemplateExpansion
+    password: str | TemplateExpansion
+    host: str | TemplateExpansion
+    port: int | TemplateExpansion = 4064
+    writable: bool | TemplateExpansion = False
+    template_start: str | None = None
+    template_end: str | None = None
+
+
+class OmeroFileSourceConfiguration(StrictModel):
+    type: Literal["omero"]
+    username: str
+    password: str
+    host: str
+    port: int = 4064
+    writable: bool = False
+
+
 FileSourceTemplateConfiguration = Annotated[
-    Union[
-        PosixFileSourceTemplateConfiguration,
-        S3FSFileSourceTemplateConfiguration,
-        FtpFileSourceTemplateConfiguration,
-        AzureFileSourceTemplateConfiguration,
-        OnedataFileSourceTemplateConfiguration,
-        WebdavFileSourceTemplateConfiguration,
-        DropboxFileSourceTemplateConfiguration,
-        GoogleDriveFileSourceTemplateConfiguration,
-        eLabFTWFileSourceTemplateConfiguration,
-        InvenioFileSourceTemplateConfiguration,
-        ZenodoFileSourceTemplateConfiguration,
-        RSpaceFileSourceTemplateConfiguration,
-    ],
+    PosixFileSourceTemplateConfiguration
+    | S3FSFileSourceTemplateConfiguration
+    | FtpFileSourceTemplateConfiguration
+    | AzureFileSourceTemplateConfiguration
+    | AzureFlatFileSourceTemplateConfiguration
+    | IrodsFileSourceTemplateConfiguration
+    | OnedataFileSourceTemplateConfiguration
+    | WebdavFileSourceTemplateConfiguration
+    | DropboxFileSourceTemplateConfiguration
+    | GoogleDriveFileSourceTemplateConfiguration
+    | OneDriveFileSourceTemplateConfiguration
+    | eLabFTWFileSourceTemplateConfiguration
+    | InvenioFileSourceTemplateConfiguration
+    | ZenodoFileSourceTemplateConfiguration
+    | RSpaceFileSourceTemplateConfiguration
+    | DataverseFileSourceTemplateConfiguration
+    | CBioPortalFileSourceTemplateConfiguration
+    | HuggingFaceFileSourceTemplateConfiguration
+    | IIIFFileSourceTemplateConfiguration
+    | MaveDBFileSourceTemplateConfiguration
+    | OmeroFileSourceTemplateConfiguration
+    | SshFileSourceTemplateConfiguration,
     Field(discriminator="type"),
 ]
 
 FileSourceConfiguration = Annotated[
-    Union[
-        PosixFileSourceConfiguration,
-        S3FSFileSourceConfiguration,
-        FtpFileSourceConfiguration,
-        AzureFileSourceConfiguration,
-        OnedataFileSourceConfiguration,
-        WebdavFileSourceConfiguration,
-        DropboxFileSourceConfiguration,
-        GoogleDriveFileSourceConfiguration,
-        eLabFTWFileSourceConfiguration,
-        InvenioFileSourceConfiguration,
-        ZenodoFileSourceConfiguration,
-        RSpaceFileSourceConfiguration,
-    ],
+    PosixFileSourceConfiguration
+    | S3FSFileSourceConfiguration
+    | FtpFileSourceConfiguration
+    | AzureFileSourceConfiguration
+    | AzureFlatFileSourceConfiguration
+    | IrodsFileSourceConfiguration
+    | OnedataFileSourceConfiguration
+    | WebdavFileSourceConfiguration
+    | DropboxFileSourceConfiguration
+    | GoogleDriveFileSourceConfiguration
+    | OneDriveFileSourceConfiguration
+    | eLabFTWFileSourceConfiguration
+    | InvenioFileSourceConfiguration
+    | ZenodoFileSourceConfiguration
+    | RSpaceFileSourceConfiguration
+    | DataverseFileSourceConfiguration
+    | CBioPortalFileSourceConfiguration
+    | HuggingFaceFileSourceConfiguration
+    | IIIFFileSourceConfiguration
+    | MaveDBFileSourceConfiguration
+    | OmeroFileSourceConfiguration
+    | SshFileSourceConfiguration,
     Field(discriminator="type"),
 ]
 
@@ -327,8 +553,8 @@ class FileSourceTemplateBase(StrictModel):
     """
 
     id: str
-    name: Optional[str]
-    description: Optional[MarkdownContent]
+    name: str | None
+    description: MarkdownContent | None
     # The UI should just show the most recent version but allow
     # admins to define newer versions with new parameterizations
     # and keep old versions in template catalog for backward compatibility
@@ -338,8 +564,8 @@ class FileSourceTemplateBase(StrictModel):
     # template by hiding but keep it in the catalog for backward
     # compatibility for users with existing stores of that template.
     hidden: bool = False
-    variables: Optional[List[TemplateVariable]] = None
-    secrets: Optional[List[TemplateSecret]] = None
+    variables: list[TemplateVariable] | None = None
+    secrets: list[TemplateSecret] | None = None
 
 
 class FileSourceTemplateSummary(FileSourceTemplateBase):
@@ -348,27 +574,27 @@ class FileSourceTemplateSummary(FileSourceTemplateBase):
 
 class FileSourceTemplate(FileSourceTemplateBase):
     configuration: FileSourceTemplateConfiguration
-    environment: Optional[List[TemplateEnvironmentEntry]] = None
+    environment: list[TemplateEnvironmentEntry] | None = None
 
     @property
     def type(self):
         return self.configuration.type
 
 
-FileSourceTemplateCatalog = RootModel[List[FileSourceTemplate]]
+FileSourceTemplateCatalog = RootModel[list[FileSourceTemplate]]
 
 
 class FileSourceTemplateSummaries(RootModel):
-    root: List[FileSourceTemplateSummary]
+    root: list[FileSourceTemplateSummary]
 
 
 def template_to_configuration(
     template: FileSourceTemplate,
-    variables: Dict[str, TemplateVariableValueType],
+    variables: dict[str, TemplateVariableValueType],
     secrets: SecretsDict,
     user_details: UserDetailsDict,
     environment: EnvironmentDict,
-    implicit: Optional[ImplicitConfigurationParameters] = None,
+    implicit: ImplicitConfigurationParameters | None = None,
 ) -> FileSourceConfiguration:
     configuration_template = template.configuration
     populate_default_variables(template.variables, variables)
@@ -377,19 +603,29 @@ def template_to_configuration(
     return to_configuration_object(raw_config)
 
 
-TypesToConfigurationClasses: Dict[FileSourceTemplateType, Type[FileSourceConfiguration]] = {
+TypesToConfigurationClasses: dict[FileSourceTemplateType, type[FileSourceConfiguration]] = {
     "ftp": FtpFileSourceConfiguration,
     "posix": PosixFileSourceConfiguration,
     "s3fs": S3FSFileSourceConfiguration,
     "azure": AzureFileSourceConfiguration,
+    "azureflat": AzureFlatFileSourceConfiguration,
+    "irods": IrodsFileSourceConfiguration,
     "onedata": OnedataFileSourceConfiguration,
     "webdav": WebdavFileSourceConfiguration,
     "dropbox": DropboxFileSourceConfiguration,
     "googledrive": GoogleDriveFileSourceConfiguration,
+    "onedrive": OneDriveFileSourceConfiguration,
     "elabftw": eLabFTWFileSourceConfiguration,
     "inveniordm": InvenioFileSourceConfiguration,
     "zenodo": ZenodoFileSourceConfiguration,
     "rspace": RSpaceFileSourceConfiguration,
+    "dataverse": DataverseFileSourceConfiguration,
+    "cbioportal": CBioPortalFileSourceConfiguration,
+    "huggingface": HuggingFaceFileSourceConfiguration,
+    "iiif": IIIFFileSourceConfiguration,
+    "mavedb": MaveDBFileSourceConfiguration,
+    "omero": OmeroFileSourceConfiguration,
+    "ssh": SshFileSourceConfiguration,
 }
 
 
@@ -405,6 +641,12 @@ OAUTH2_CONFIGURED_SOURCES: ConfiguredOAuth2Sources = {
         token_url="https://oauth2.googleapis.com/token",
         scope="https://www.googleapis.com/auth/drive.file",
     ),
+    "onedrive": OAuth2Configuration(
+        authorize_url="https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+        token_url="https://login.microsoftonline.com/common/oauth2/v2.0/token",
+        authorize_params={},
+        scope="offline_access Files.ReadWrite.AppFolder",
+    ),
 }
 
 
@@ -412,13 +654,13 @@ def get_oauth2_config(template: FileSourceTemplate) -> OAuth2Configuration:
     return get_oauth2_config_from(template, OAUTH2_CONFIGURED_SOURCES)
 
 
-def get_oauth2_config_or_none(template: FileSourceTemplate) -> Optional[OAuth2Configuration]:
+def get_oauth2_config_or_none(template: FileSourceTemplate) -> OAuth2Configuration | None:
     if template.configuration.type not in OAUTH2_CONFIGURED_SOURCES:
         return None
     return get_oauth2_config(template)
 
 
-def to_configuration_object(configuration_dict: Dict[str, Any]) -> FileSourceConfiguration:
+def to_configuration_object(configuration_dict: dict[str, Any]) -> FileSourceConfiguration:
     if "type" not in configuration_dict:
         raise KeyError("Configuration objects require a file source 'type' key, none found.")
     object_store_type = configuration_dict["type"]

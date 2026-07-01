@@ -689,7 +689,7 @@ div.permissionContainer {
 
 div.toolSectionTitle {
     font-weight: 500;
-    font-size: $h4-font-size;
+    font-size: $font-size-base;
 }
 
 div.toolTitle,
@@ -913,7 +913,9 @@ div.toolSectionTitle {
     justify-content: center;
 
     /* transition effect. not necessary */
-    transition: opacity 0.2s, visibility 0.2s;
+    transition:
+        opacity 0.2s,
+        visibility 0.2s;
 }
 
 .hidden_description_layer.dragover {

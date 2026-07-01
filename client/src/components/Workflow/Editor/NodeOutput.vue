@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { library } from "@fortawesome/fontawesome-svg-core";
 import { faSquare } from "@fortawesome/free-regular-svg-icons";
 import {
     faCheckSquare,
@@ -41,8 +40,6 @@ import ConnectionMenu from "@/components/Workflow/Editor/ConnectionMenu.vue";
 
 type ElementBounding = UnwrapRef<UseElementBoundingReturn>;
 
-library.add(faSquare, faCheckSquare, faChevronCircleRight, faEye, faEyeSlash, faMinus, faPlus);
-
 const props = defineProps<{
     output: OutputTerminalSource;
     workflowOutputs: NonNullable<Step["workflow_outputs"]>;
@@ -68,7 +65,7 @@ const terminalElement = computed(() => (terminalComponent.value?.$el as HTMLElem
 
 const position = useRelativePosition(
     terminalElement,
-    computed(() => props.parentNode)
+    computed(() => props.parentNode),
 );
 
 const extensions = computed(() => {
@@ -101,7 +98,7 @@ const { terminal, isMappedOver: isMultiple } = useTerminal(stepId, effectiveOutp
 };
 
 const workflowOutput = computed(() =>
-    props.workflowOutputs.find((workflowOutput) => workflowOutput.output_name == props.output.name)
+    props.workflowOutputs.find((workflowOutput) => workflowOutput.output_name == props.output.name),
 );
 
 const isVisible = computed(() => {
@@ -116,8 +113,13 @@ const visibleHint = computed(() => {
         return `Output will be hidden in history. Click to make output visible.`;
     }
 });
+
+const isOutput = computed(() => {
+    return Boolean(workflowOutput.value?.label);
+});
+
 const label = computed(() => {
-    return workflowOutput.value?.label || props.output.name;
+    return workflowOutput.value?.label ?? props.output.name;
 });
 
 const rowClass = computed(() => {
@@ -157,7 +159,7 @@ function onToggleActive() {
     let stepWorkflowOutputs = [...(step.workflow_outputs || [])];
     if (workflowOutput.value) {
         stepWorkflowOutputs = stepWorkflowOutputs.filter(
-            (workflowOutput) => workflowOutput.output_name !== output.value.name
+            (workflowOutput) => workflowOutput.output_name !== output.value.name,
         );
     } else {
         stepWorkflowOutputs.push({ output_name: output.value.name, label: output.value.name });
@@ -168,7 +170,7 @@ function onToggleActive() {
         stateStore,
         step.id,
         { workflow_outputs: step.workflow_outputs },
-        { workflow_outputs: stepWorkflowOutputs }
+        { workflow_outputs: stepWorkflowOutputs },
     );
     undoRedoStore.applyAction(action);
 }
@@ -206,7 +208,7 @@ function onToggleVisible() {
         stateStore,
         step.id,
         { post_job_actions: oldPostJobActions },
-        { post_job_actions: newPostJobActions }
+        { post_job_actions: newPostJobActions },
     );
     undoRedoStore.applyAction(action);
 }
@@ -227,10 +229,10 @@ const dragY = ref(0);
 const isDragging = ref(false);
 
 const startX = computed(
-    () => position.value.offsetLeft + (props.stepPosition?.left ?? 0) + (terminalElement.value?.offsetWidth ?? 2) / 2
+    () => position.value.offsetLeft + (props.stepPosition?.left ?? 0) + (terminalElement.value?.offsetWidth ?? 2) / 2,
 );
 const startY = computed(
-    () => position.value.offsetTop + (props.stepPosition?.top ?? 0) + (terminalElement.value?.offsetHeight ?? 2) / 2
+    () => position.value.offsetTop + (props.stepPosition?.top ?? 0) + (terminalElement.value?.offsetHeight ?? 2) / 2,
 );
 const endX = computed(() => {
     return (dragX.value || startX.value) + props.scroll.x.value / props.scale;
@@ -260,7 +262,7 @@ watch(
     },
     {
         immediate: true,
-    }
+    },
 );
 
 function onMove(dragPosition: XYPosition) {
@@ -318,12 +320,12 @@ const outputDetails = computed(() => {
 
 const isDuplicateLabel = computed(() => {
     const duplicateLabels = stepStore.duplicateLabels;
-    return Boolean(label.value && duplicateLabels.has(label.value));
+    return isOutput.value && Boolean(label.value && duplicateLabels.has(label.value));
 });
 
 const labelClass = computed(() => {
     if (isDuplicateLabel.value) {
-        return "alert-info";
+        return "alert-danger";
     }
     return null;
 });
@@ -351,27 +353,27 @@ const removeTagsAction = computed(() => {
             <div class="node-output-buttons">
                 <button
                     v-if="showCalloutActiveOutput"
-                    v-b-tooltip
+                    v-g-tooltip
                     class="callout-terminal inline-icon-button mark-terminal"
                     :class="{ 'mark-terminal-active': workflowOutput }"
                     title="Checked outputs will become primary workflow outputs and are available as subworkflow outputs."
                     @click="onToggleActive">
-                    <FontAwesomeIcon v-if="workflowOutput" fixed-width icon="fa-check-square" />
-                    <FontAwesomeIcon v-else fixed-width icon="far fa-square" />
+                    <FontAwesomeIcon v-if="workflowOutput" fixed-width :icon="faCheckSquare" />
+                    <FontAwesomeIcon v-else fixed-width :icon="faSquare" />
                 </button>
                 <button
                     v-if="showCalloutVisible"
-                    v-b-tooltip
+                    v-g-tooltip
                     class="callout-terminal inline-icon-button mark-terminal"
                     :class="{ 'mark-terminal-visible': isVisible, 'mark-terminal-hidden': !isVisible }"
                     :title="visibleHint"
                     @click="onToggleVisible">
-                    <FontAwesomeIcon v-if="isVisible" fixed-width icon="fa-eye" />
-                    <FontAwesomeIcon v-else fixed-width icon="fa-eye-slash" />
+                    <FontAwesomeIcon v-if="isVisible" fixed-width :icon="faEye" />
+                    <FontAwesomeIcon v-else fixed-width :icon="faEyeSlash" />
                 </button>
                 <span>
                     <span
-                        v-b-tooltip
+                        v-g-tooltip
                         :title="labelToolTipTitle"
                         class="d-inline-block rounded"
                         :class="labelClass"
@@ -384,19 +386,19 @@ const removeTagsAction = computed(() => {
 
             <div
                 v-if="addTagsAction.length > 0"
-                v-b-tooltip.left
+                v-g-tooltip.left
                 class="d-flex align-items-center overflow-x-hidden"
                 title="These tags will be added to the output dataset">
-                <FontAwesomeIcon icon="fa-plus" class="mr-1" />
+                <FontAwesomeIcon :icon="faPlus" class="mr-1" />
                 <StatelessTags disabled no-padding :value="addTagsAction" />
             </div>
 
             <div
                 v-if="removeTagsAction.length > 0"
-                v-b-tooltip.left
+                v-g-tooltip.left
                 class="d-flex align-items-center overflow-x-hidden"
                 title="These tags will be removed from the output dataset">
-                <FontAwesomeIcon icon="fa-minus" class="mr-1" />
+                <FontAwesomeIcon :icon="faMinus" class="mr-1" />
                 <StatelessTags disabled no-padding :value="removeTagsAction" />
             </div>
         </div>
@@ -404,7 +406,7 @@ const removeTagsAction = computed(() => {
         <DraggableWrapper
             :id="id"
             ref="terminalComponent"
-            v-b-tooltip.hover="!props.blank ? outputDetails : ''"
+            v-g-tooltip.hover="!props.blank ? outputDetails : ''"
             class="output-terminal prevent-zoom"
             :class="{ 'mapped-over': isMultiple, 'blank-output': props.blank }"
             :output-name="output.name"
@@ -424,7 +426,7 @@ const removeTagsAction = computed(() => {
                 :aria-label="`Connect output ${output.name} to input. Press space to see a list of available inputs`"
                 @click="toggleChildComponent"></button>
 
-            <FontAwesomeIcon class="terminal-icon" icon="fa-chevron-circle-right" />
+            <FontAwesomeIcon class="terminal-icon" :icon="faChevronCircleRight" />
 
             <ConnectionMenu
                 v-if="showChildComponent"
@@ -436,7 +438,7 @@ const removeTagsAction = computed(() => {
 </template>
 
 <style lang="scss">
-@import "theme/blue.scss";
+@import "@/style/scss/theme/blue.scss";
 @import "nodeTerminalStyle.scss";
 
 .node-output-buttons {

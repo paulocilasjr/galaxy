@@ -5,13 +5,6 @@ Interval datatypes
 import logging
 import sys
 import tempfile
-from typing import (
-    cast,
-    List,
-    Optional,
-    Tuple,
-    Union,
-)
 from urllib.parse import quote_plus
 
 import pysam
@@ -126,7 +119,7 @@ class Interval(Tabular):
         Tabular.__init__(self, **kwd)
         self.add_display_app("ucsc", "display at UCSC", "as_ucsc_display_file", "ucsc_links")
 
-    def init_meta(self, dataset: HasMetadata, copy_from: Optional[HasMetadata] = None) -> None:
+    def init_meta(self, dataset: HasMetadata, copy_from: HasMetadata | None = None) -> None:
         Tabular.init_meta(self, dataset, copy_from=copy_from)
 
     def set_meta(
@@ -205,10 +198,10 @@ class Interval(Tabular):
     def get_estimated_display_viewport(
         self,
         dataset: DatasetProtocol,
-        chrom_col: Optional[int] = None,
-        start_col: Optional[int] = None,
-        end_col: Optional[int] = None,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        chrom_col: int | None = None,
+        start_col: int | None = None,
+        end_col: int | None = None,
+    ) -> tuple[str | None, str | None, str | None]:
         """Return a chrom, start, stop tuple for viewing a file."""
         viewport_feature_count = 100  # viewport should check at least 100 features; excludes comment lines
         max_line_count = max(viewport_feature_count, 500)  # maximum number of lines to check; includes comment lines
@@ -266,7 +259,7 @@ class Interval(Tabular):
             log.exception("Exception caught attempting to generate viewport for dataset '%d'", dataset.id)
         return (None, None, None)
 
-    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> Union[FileObjType, str]:
+    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> FileObjType | str:
         """Returns file contents with only the bed data"""
         with tempfile.NamedTemporaryFile(delete=False, mode="w") as fh:
             c, s, e, t, n = (
@@ -282,16 +275,16 @@ class Interval(Tabular):
                     strand = "+"
                     name = f"region_{i}"
                     if n >= 0 and n < len(elems):
-                        name = cast(str, elems[n])
+                        name = elems[n]
                     if t < len(elems):
-                        strand = cast(str, elems[t])
+                        strand = elems[t]
                     tmp = [elems[c], elems[s], elems[e], name, "0", strand]
                     fh.write("{}\n".format("\t".join(tmp)))
             elif n >= 0:  # name column (should) exists
                 for i, elems in enumerate(compression_utils.file_iter(dataset.get_file_name())):
                     name = f"region_{i}"
                     if n >= 0 and n < len(elems):
-                        name = cast(str, elems[n])
+                        name = elems[n]
                     tmp = [elems[c], elems[s], elems[e], name]
                     fh.write("{}\n".format("\t".join(tmp)))
             else:
@@ -313,7 +306,7 @@ class Interval(Tabular):
             },
         )
 
-    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         """
         Generate links to UCSC genome browser sites based on the dbkey
         and content of dataset.
@@ -428,7 +421,7 @@ class BedGraph(Interval):
     track_type = "LineTrack"
     data_sources = {"data": "bigwig", "index": "bigwig"}
 
-    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> Union[FileObjType, str]:
+    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> FileObjType | str:
         """
         Returns file contents as is with no modifications.
         TODO: this is a functional stub and will need to be enhanced moving forward to provide additional support for bedgraph.
@@ -438,10 +431,10 @@ class BedGraph(Interval):
     def get_estimated_display_viewport(
         self,
         dataset: DatasetProtocol,
-        chrom_col: Optional[int] = 0,
-        start_col: Optional[int] = 1,
-        end_col: Optional[int] = 2,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        chrom_col: int | None = 0,
+        start_col: int | None = 1,
+        end_col: int | None = 2,
+    ) -> tuple[str | None, str | None, str | None]:
         """
         Set viewport based on dataset's first 100 lines.
         """
@@ -517,7 +510,7 @@ class Bed(Interval):
                         break
         Tabular.set_meta(self, dataset, overwrite=overwrite, skip=i)
 
-    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> Union[FileObjType, str]:
+    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> FileObjType | str:
         """Returns file contents with only the bed data. If bed 6+, treat as interval."""
         for line in open(dataset.get_file_name()):
             line = line.strip()
@@ -878,9 +871,7 @@ class Gff(Tabular, _RemoteCallMixin):
         """Returns formated html of peek"""
         return self.make_html_table(dataset, column_names=self.column_names)
 
-    def get_estimated_display_viewport(
-        self, dataset: DatasetProtocol
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def get_estimated_display_viewport(self, dataset: DatasetProtocol) -> tuple[str | None, str | None, str | None]:
         """
         Return a chrom, start, stop tuple for viewing a file.  There are slight differences between gff 2 and gff 3
         formats.  This function should correctly handle both...
@@ -955,7 +946,7 @@ class Gff(Tabular, _RemoteCallMixin):
                 log.exception("Unexpected error")
         return (None, None, None)  # could not determine viewport
 
-    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         ret_val = []
         seqid, start, stop = self.get_estimated_display_viewport(dataset)
         if seqid is not None:
@@ -968,7 +959,7 @@ class Gff(Tabular, _RemoteCallMixin):
                     ret_val.append((site_name, link))
         return ret_val
 
-    def gbrowse_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def gbrowse_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         ret_val = []
         seqid, start, stop = self.get_estimated_display_viewport(dataset)
         if seqid is not None:
@@ -1290,9 +1281,7 @@ class Wiggle(Tabular, _RemoteCallMixin):
         self.add_display_app("ucsc", "display at UCSC", "as_ucsc_display_file", "ucsc_links")
         self.add_display_app("gbrowse", "display in Gbrowse", "as_gbrowse_display_file", "gbrowse_links")
 
-    def get_estimated_display_viewport(
-        self, dataset: DatasetProtocol
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def get_estimated_display_viewport(self, dataset: DatasetProtocol) -> tuple[str | None, str | None, str | None]:
         """Return a chrom, start, stop tuple for viewing a file."""
         viewport_feature_count = 100  # viewport should check at least 100 features; excludes comment lines
         max_line_count = max(viewport_feature_count, 500)  # maximum number of lines to check; includes comment lines
@@ -1357,7 +1346,7 @@ class Wiggle(Tabular, _RemoteCallMixin):
                 log.exception("Unexpected error")
         return (None, None, None)  # could not determine viewport
 
-    def gbrowse_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def gbrowse_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         ret_val = []
         chrom, start, stop = self.get_estimated_display_viewport(dataset)
         if chrom is not None:
@@ -1370,7 +1359,7 @@ class Wiggle(Tabular, _RemoteCallMixin):
                     ret_val.append((site_name, link))
         return ret_val
 
-    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         ret_val = []
         chrom, start, stop = self.get_estimated_display_viewport(dataset)
         if chrom is not None:
@@ -1478,10 +1467,10 @@ class CustomTrack(Tabular):
     def get_estimated_display_viewport(
         self,
         dataset: DatasetProtocol,
-        chrom_col: Optional[int] = None,
-        start_col: Optional[int] = None,
-        end_col: Optional[int] = None,
-    ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        chrom_col: int | None = None,
+        start_col: int | None = None,
+        end_col: int | None = None,
+    ) -> tuple[str | None, str | None, str | None]:
         """Return a chrom, start, stop tuple for viewing a file."""
         # FIXME: only BED and WIG custom tracks are currently supported
         # As per previously existing behavior, viewport will only be over the first intervals
@@ -1539,7 +1528,7 @@ class CustomTrack(Tabular):
                 log.exception("Unexpected error")
         return (None, None, None)  # could not determine viewport
 
-    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         ret_val = []
         chrom, start, stop = self.get_estimated_display_viewport(dataset)
         if chrom is not None:
@@ -1784,7 +1773,7 @@ class IntervalTabix(Interval):
         dataset: DatasetProtocol,
         overwrite: bool = True,
         first_line_is_header: bool = False,
-        metadata_tmp_files_dir: Optional[str] = None,
+        metadata_tmp_files_dir: str | None = None,
         **kwd,
     ) -> None:
         # We don't use the method Interval.set_meta as we don't want to guess the columns for chr start end

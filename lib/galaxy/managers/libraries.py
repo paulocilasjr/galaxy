@@ -3,12 +3,6 @@ Manager and Serializer for libraries.
 """
 
 import logging
-from typing import (
-    Dict,
-    Optional,
-    Set,
-    Tuple,
-)
 
 from sqlalchemy.exc import (
     MultipleResultsFound,
@@ -30,7 +24,10 @@ from galaxy.model.db.library import (
     get_library_ids,
     get_library_permissions_by_role,
 )
-from galaxy.model.db.role import get_private_role_user_emails_dict
+from galaxy.model.db.role import (
+    get_private_role_user_emails_dict,
+    role_name_id_pairs,
+)
 from galaxy.util import (
     pretty_print_time_interval,
     unicodify,
@@ -68,7 +65,7 @@ class LibraryManager:
         library = self.secure(trans, library, check_accessible)
         return library
 
-    def create(self, trans, name: str, description: Optional[str] = "", synopsis: Optional[str] = "") -> Library:
+    def create(self, trans, name: str, description: str | None = "", synopsis: str | None = "") -> Library:
         """
         Create a new library.
         """
@@ -86,9 +83,9 @@ class LibraryManager:
         self,
         trans,
         library: Library,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        synopsis: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        synopsis: str | None = None,
     ) -> Library:
         """
         Update the given library
@@ -119,7 +116,7 @@ class LibraryManager:
             trans.sa_session.commit()
         return library
 
-    def delete(self, trans, library: Library, undelete: Optional[bool] = False) -> Library:
+    def delete(self, trans, library: Library, undelete: bool | None = False) -> Library:
         """
         Mark given library deleted/undeleted based on the flag.
         """
@@ -133,7 +130,7 @@ class LibraryManager:
         trans.sa_session.commit()
         return library
 
-    def list(self, trans, deleted: Optional[bool] = False) -> Tuple[Query, Dict[str, Set]]:
+    def list(self, trans, deleted: bool | None = False) -> tuple[Query, dict[str, set]]:
         """
         Return a list of libraries from the DB.
 
@@ -215,7 +212,7 @@ class LibraryManager:
         else:
             return library
 
-    def get_library_dict(self, trans, library: Library, prefetched_ids: Optional[Dict[str, Set]] = None) -> dict:
+    def get_library_dict(self, trans, library: Library, prefetched_ids: dict[str, set] | None = None) -> dict:
         """
         Return library data in the form of a dictionary.
 
@@ -275,35 +272,27 @@ class LibraryManager:
         :rtype:     dictionary
         :returns:   dict of current roles for all available permission types
         """
-        private_role_emails = get_private_role_user_emails_dict(trans.sa_session)
         access_roles = self.get_access_roles(trans, library)
         modify_roles = self.get_modify_roles(trans, library)
         manage_roles = self.get_manage_roles(trans, library)
         add_roles = self.get_add_roles(trans, library)
-
-        def make_tuples(roles: Set):
-            tuples = []
-            for role in roles:
-                # use role name for non-private roles, and user.email from private rules
-                displayed_name = private_role_emails.get(role.id, role.name)
-                role_tuple = (displayed_name, trans.security.encode_id(role.id))
-                tuples.append(role_tuple)
-            return tuples
-
+        all_role_ids = {r.id for r in access_roles | modify_roles | manage_roles | add_roles}
+        private_role_emails = get_private_role_user_emails_dict(trans.sa_session, role_ids=all_role_ids)
+        encode_id = trans.security.encode_id
         return dict(
-            access_library_role_list=make_tuples(access_roles),
-            modify_library_role_list=make_tuples(modify_roles),
-            manage_library_role_list=make_tuples(manage_roles),
-            add_library_item_role_list=make_tuples(add_roles),
+            access_library_role_list=role_name_id_pairs(access_roles, private_role_emails, encode_id),
+            modify_library_role_list=role_name_id_pairs(modify_roles, private_role_emails, encode_id),
+            manage_library_role_list=role_name_id_pairs(manage_roles, private_role_emails, encode_id),
+            add_library_item_role_list=role_name_id_pairs(add_roles, private_role_emails, encode_id),
         )
 
-    def get_access_roles(self, trans, library: Library) -> Set[Role]:
+    def get_access_roles(self, trans, library: Library) -> set[Role]:
         """
         Load access roles for all library permissions
         """
         return set(library.get_access_roles(trans.app.security_agent))
 
-    def get_modify_roles(self, trans, library: Library) -> Set[Role]:
+    def get_modify_roles(self, trans, library: Library) -> set[Role]:
         """
         Load modify roles for all library permissions
         """
@@ -313,7 +302,7 @@ class LibraryManager:
             )
         )
 
-    def get_manage_roles(self, trans, library: Library) -> Set[Role]:
+    def get_manage_roles(self, trans, library: Library) -> set[Role]:
         """
         Load manage roles for all library permissions
         """
@@ -323,7 +312,7 @@ class LibraryManager:
             )
         )
 
-    def get_add_roles(self, trans, library: Library) -> Set[Role]:
+    def get_add_roles(self, trans, library: Library) -> set[Role]:
         """
         Load add roles for all library permissions
         """
@@ -347,7 +336,7 @@ class LibraryManager:
         return trans.app.security_agent.library_is_public(library)
 
 
-def get_containing_library_from_library_dataset(trans, library_dataset) -> Optional[Library]:
+def get_containing_library_from_library_dataset(trans, library_dataset) -> Library | None:
     """Given a library_dataset, get the containing library"""
     folder = library_dataset.folder
     while folder.parent:

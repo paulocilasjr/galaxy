@@ -1,18 +1,28 @@
+import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
 import flushPromises from "flush-promises";
-import { getLocalVue } from "tests/jest/helpers";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useServerMock } from "@/api/client/__mocks__";
 import pageTemplate from "@/components/PageDisplay/pageTemplate.yml";
+import { Toast } from "@/composables/toast";
 
 import PageForm from "./PageForm.vue";
+
+vi.mock("@/composables/toast", () => {
+    const toastInstance = { success: vi.fn(), error: vi.fn() };
+    return {
+        Toast: toastInstance,
+        useToast: () => toastInstance,
+    };
+});
 
 const { server, http } = useServerMock();
 const localVue = getLocalVue();
 
-const mockPush = jest.fn();
+const mockPush = vi.fn();
 
-jest.mock("vue-router/composables", () => ({
+vi.mock("vue-router/composables", () => ({
     useRouter: () => ({
         push: (...args) => mockPush(...args),
     }),
@@ -34,6 +44,10 @@ function mountTarget(props = {}) {
 }
 
 describe("PageForm.vue - Create mode", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     it("renders loading spinner when fetching report", async () => {
         server.use(
             http.get("/api/invocations/:invocation_id/report", ({ response }) =>
@@ -41,8 +55,8 @@ describe("PageForm.vue - Create mode", () => {
                     id: 42,
                     title: "Invoked Report Title",
                     invocation_markdown: "## Report Content",
-                })
-            )
+                }),
+            ),
         );
         server.use(
             http.post("/api/pages", async ({ request, response }) => {
@@ -52,7 +66,7 @@ describe("PageForm.vue - Create mode", () => {
                 expect(body.annotation).toBe("");
                 expect(body.content).toBe("## Report Content");
                 return response(200).json({ id: "new-page-321" });
-            })
+            }),
         );
         const wrapper = mountTarget({ mode: "create", invocationId: "42" });
         expect(wrapper.findComponent({ name: "LoadingSpan" }).exists()).toBe(true);
@@ -68,8 +82,8 @@ describe("PageForm.vue - Create mode", () => {
     it("shows error alert if fetching report fails", async () => {
         server.use(
             http.get("/api/invocations/:invocation_id/report", ({ response }) =>
-                response(500).json({ err_msg: "Failed to fetch report" })
-            )
+                response(500).json({ err_msg: "Failed to fetch report" }),
+            ),
         );
         const wrapper = mountTarget({ mode: "create", invocationId: "fail" });
         await flushPromises();
@@ -78,14 +92,10 @@ describe("PageForm.vue - Create mode", () => {
         expect(alert.text()).toContain("Failed to fetch report");
     });
 
-    it("shows validation error when required fields are missing on submit", async () => {
+    it("submit button is disabled when required fields are missing", async () => {
         const wrapper = mountTarget({ mode: "create" });
         await flushPromises();
-        await wrapper.find("#page-submit").trigger("click");
-        await flushPromises();
-        const alert = wrapper.findComponent({ name: "BAlert" });
-        expect(alert.exists()).toBe(true);
-        expect(alert.text()).toContain("Please complete all required inputs.");
+        expect(wrapper.find("#page-submit").classes()).toContain("g-disabled");
     });
 
     it("submits page creation with correct fields", async () => {
@@ -97,7 +107,7 @@ describe("PageForm.vue - Create mode", () => {
                 expect(body.annotation).toBe("An annotation");
                 expect(body.content).toBe(pageTemplate.content);
                 return response(200).json({ id: "new-page-123" });
-            })
+            }),
         );
         const wrapper = mountTarget({ mode: "create" });
         await flushPromises();
@@ -117,13 +127,15 @@ describe("PageForm.vue - Create mode", () => {
         await wrapper.find("#page-slug").setValue("some-title");
         await wrapper.find("#page-submit").trigger("click");
         await flushPromises();
-        const alert = wrapper.findComponent({ name: "BAlert" });
-        expect(alert.exists()).toBe(true);
-        expect(alert.text()).toContain("Creation failed");
+        expect(Toast.error).toHaveBeenCalledWith("Creation failed", "Error Creating Page");
     });
 });
 
 describe("PageForm.vue - Edit mode", () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     it("renders loading spinner and fetches page details", async () => {
         server.use(
             http.get("/api/pages/:id", ({ response }) =>
@@ -133,8 +145,8 @@ describe("PageForm.vue - Edit mode", () => {
                     slug: "test-page",
                     annotation: "Testing page edit",
                     content: "## Sample Content",
-                })
-            )
+                }),
+            ),
         );
         const wrapper = mountTarget({ mode: "edit", id: "123" });
         expect(wrapper.findComponent({ name: "LoadingSpan" }).exists()).toBe(true);
@@ -153,14 +165,10 @@ describe("PageForm.vue - Edit mode", () => {
         expect(alert.text()).toContain("Page load failed");
     });
 
-    it("shows validation error if required fields are missing on update", async () => {
+    it("submit button is disabled when required fields are missing", async () => {
         const wrapper = mountTarget({ mode: "edit", id: "123" });
         await flushPromises();
-        await wrapper.find("#page-submit").trigger("click");
-        await flushPromises();
-        const alert = wrapper.findComponent({ name: "BAlert" });
-        expect(alert.exists()).toBe(true);
-        expect(alert.text()).toContain("Please complete all required inputs.");
+        expect(wrapper.find("#page-submit").classes()).toContain("g-disabled");
     });
 
     it("submits page update with correct fields", async () => {
@@ -171,7 +179,7 @@ describe("PageForm.vue - Edit mode", () => {
                 expect(body.slug).toBe("updated-title");
                 expect(body.annotation).toBe("Updated annotation");
                 return response(200).json({});
-            })
+            }),
         );
         const wrapper = mountTarget({ mode: "edit", id: "456" });
         await flushPromises();
@@ -191,8 +199,6 @@ describe("PageForm.vue - Edit mode", () => {
         await wrapper.find("#page-slug").setValue("error-title");
         await wrapper.find("#page-submit").trigger("click");
         await flushPromises();
-        const alert = wrapper.findComponent({ name: "BAlert" });
-        expect(alert.exists()).toBe(true);
-        expect(alert.text()).toContain("Update failed");
+        expect(Toast.error).toHaveBeenCalledWith("Update failed", "Error Updating Page");
     });
 });

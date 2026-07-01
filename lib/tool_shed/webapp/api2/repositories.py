@@ -5,9 +5,6 @@ import tempfile
 from typing import (
     cast,
     IO,
-    List,
-    Optional,
-    Union,
 )
 
 from fastapi import (
@@ -28,6 +25,7 @@ from galaxy.exceptions import (
 from galaxy.webapps.galaxy.api import as_form
 from tool_shed.context import SessionRequestContext
 from tool_shed.managers.repositories import (
+    add_admin_user,
     can_manage_repo,
     can_update_repo,
     check_updates,
@@ -42,6 +40,7 @@ from tool_shed.managers.repositories import (
     IndexRequest,
     PaginatedIndexRequest,
     readmes,
+    remove_admin_user,
     reset_metadata_on_repositories,
     reset_metadata_on_repository,
     search,
@@ -49,6 +48,7 @@ from tool_shed.managers.repositories import (
     to_model,
     UpdatesRequest,
     upload_tar_and_set_metadata,
+    usernames_with_admin_role,
 )
 from tool_shed.structured_app import ToolShedApp
 from tool_shed.util.repository_util import (
@@ -83,6 +83,7 @@ from . import (
     depends,
     DependsOnTrans,
     DownloadableQueryParam,
+    DryRunQueryParam,
     OptionalHexlifyParam,
     OptionalRepositoryIdParam,
     OptionalRepositoryNameParam,
@@ -104,6 +105,7 @@ from . import (
     RequiredRepositoryChangesetRevisionParam,
     Router,
     UsernameIdPathParam,
+    VerboseQueryParam,
 )
 
 log = logging.getLogger(__name__)
@@ -111,7 +113,7 @@ log = logging.getLogger(__name__)
 
 router = Router(tags=["repositories"])
 
-IndexResponse = Union[RepositorySearchResults, List[Repository], PaginatedRepositoryIndexResults]
+IndexResponse = RepositorySearchResults | list[Repository] | PaginatedRepositoryIndexResults
 
 
 @as_form
@@ -130,16 +132,16 @@ class FastAPIRepositories:
     )
     def index(
         self,
-        q: Optional[str] = RepositoryIndexQueryParam,
-        filter: Optional[str] = RepositoryIndexFilterParam,
-        page: Optional[int] = RepositorySearchPageQueryParam,
-        page_size: Optional[int] = RepositorySearchPageSizeQueryParam,
-        deleted: Optional[bool] = RepositoryIndexDeletedQueryParam,
-        owner: Optional[str] = RepositoryIndexOwnerQueryParam,
-        name: Optional[str] = RepositoryIndexNameQueryParam,
-        category_id: Optional[str] = RepositoryIndexCategoryQueryParam,
-        sort_desc: Optional[bool] = RepositoryIndexSortDescParam,
-        sort_by: Optional[IndexSortByType] = RepositoryIndexSortByParam,
+        q: str | None = RepositoryIndexQueryParam,
+        filter: str | None = RepositoryIndexFilterParam,
+        page: int | None = RepositorySearchPageQueryParam,
+        page_size: int | None = RepositorySearchPageSizeQueryParam,
+        deleted: bool | None = RepositoryIndexDeletedQueryParam,
+        owner: str | None = RepositoryIndexOwnerQueryParam,
+        name: str | None = RepositoryIndexNameQueryParam,
+        category_id: str | None = RepositoryIndexCategoryQueryParam,
+        sort_desc: bool | None = RepositoryIndexSortDescParam,
+        sort_by: IndexSortByType | None = RepositoryIndexSortByParam,
         trans: SessionRequestContext = DependsOnTrans,
     ) -> IndexResponse:
 
@@ -270,10 +272,10 @@ class FastAPIRepositories:
     )
     def get_ordered_installable_revisions(
         self,
-        owner: Optional[str] = OptionalRepositoryOwnerParam,
-        name: Optional[str] = OptionalRepositoryNameParam,
-        tsr_id: Optional[str] = OptionalRepositoryIdParam,
-    ) -> List[str]:
+        owner: str | None = OptionalRepositoryOwnerParam,
+        name: str | None = OptionalRepositoryNameParam,
+        tsr_id: str | None = OptionalRepositoryIdParam,
+    ) -> list[str]:
         return get_ordered_installable_revisions(self.app, name, owner, tsr_id)
 
     @router.post(
@@ -288,7 +290,9 @@ class FastAPIRepositories:
             ResetMetadataOnRepositoryRequest
         ),
     ) -> ResetMetadataOnRepositoryResponse:
-        return reset_metadata_on_repository(trans, request.repository_id)
+        return reset_metadata_on_repository(
+            trans, request.repository_id, dry_run=request.dry_run, verbose=request.verbose
+        )
 
     @router.post(
         "/api/repositories/{encoded_repository_id}/reset_metadata",
@@ -299,8 +303,10 @@ class FastAPIRepositories:
         self,
         trans: SessionRequestContext = DependsOnTrans,
         encoded_repository_id: str = RepositoryIdPathParam,
+        dry_run: bool = DryRunQueryParam,
+        verbose: bool = VerboseQueryParam,
     ) -> ResetMetadataOnRepositoryResponse:
-        return reset_metadata_on_repository(trans, encoded_repository_id)
+        return reset_metadata_on_repository(trans, encoded_repository_id, dry_run=dry_run, verbose=verbose)
 
     @router.post(
         "/api/repositories/reset_metadata_on_repositories",
@@ -325,10 +331,10 @@ class FastAPIRepositories:
     )
     def updates(
         self,
-        owner: Optional[str] = OptionalRepositoryOwnerParam,
-        name: Optional[str] = OptionalRepositoryNameParam,
+        owner: str | None = OptionalRepositoryOwnerParam,
+        name: str | None = OptionalRepositoryNameParam,
         changeset_revision: str = RequiredRepositoryChangesetRevisionParam,
-        hexlify: Optional[bool] = OptionalHexlifyParam,
+        hexlify: bool | None = OptionalHexlifyParam,
     ):
         request = UpdatesRequest(
             name=name,
@@ -380,7 +386,8 @@ class FastAPIRepositories:
 
         # may want to set some of these to null, so we're using the exclude_unset feature
         # to just serialize the ones we want to use to a dictionary.
-        update_dictionary = request.model_dump(exclude_unset=True)
+        # by_alias=True ensures type_ → type, matching update_validated_repository's expected keys.
+        update_dictionary = request.model_dump(exclude_unset=True, by_alias=True)
         repo_result, message = update_validated_repository(trans, repository, **update_dictionary)
         if repo_result is None:
             raise ActionInputError(message)
@@ -415,7 +422,7 @@ class FastAPIRepositories:
         self,
         trans: SessionRequestContext = DependsOnTrans,
         encoded_repository_id: str = RepositoryIdPathParam,
-    ) -> List[str]:
+    ) -> list[str]:
         repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
         ensure_can_manage(trans, repository)
         return trans.app.security_agent.usernames_that_can_push(repository)
@@ -429,7 +436,7 @@ class FastAPIRepositories:
         trans: SessionRequestContext = DependsOnTrans,
         encoded_repository_id: str = RepositoryIdPathParam,
         username: str = UsernameIdPathParam,
-    ) -> List[str]:
+    ) -> list[str]:
         repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
         if not can_manage_repo(trans, repository):
             raise InsufficientPermissionsException("You do not have permission to update this repository.")
@@ -513,12 +520,53 @@ class FastAPIRepositories:
         trans: SessionRequestContext = DependsOnTrans,
         encoded_repository_id: str = RepositoryIdPathParam,
         username: str = UsernameIdPathParam,
-    ) -> List[str]:
+    ) -> list[str]:
         repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
         if not can_manage_repo(trans, repository):
             raise InsufficientPermissionsException("You do not have permission to update this repository.")
         repository.set_allow_push(None, remove_auth=username)
         return trans.app.security_agent.usernames_that_can_push(repository)
+
+    @router.get(
+        "/api/repositories/{encoded_repository_id}/admins",
+        operation_id="repositories__show_admins",
+    )
+    def show_admins(
+        self,
+        trans: SessionRequestContext = DependsOnTrans,
+        encoded_repository_id: str = RepositoryIdPathParam,
+    ) -> list[str]:
+        repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
+        ensure_can_manage(trans, repository)
+        return usernames_with_admin_role(self.app, repository)
+
+    @router.post(
+        "/api/repositories/{encoded_repository_id}/admins/{username}",
+        operation_id="repositories__add_admin",
+    )
+    def add_admin(
+        self,
+        trans: SessionRequestContext = DependsOnTrans,
+        encoded_repository_id: str = RepositoryIdPathParam,
+        username: str = UsernameIdPathParam,
+    ) -> list[str]:
+        repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
+        ensure_can_manage(trans, repository)
+        return add_admin_user(self.app, repository, username)
+
+    @router.delete(
+        "/api/repositories/{encoded_repository_id}/admins/{username}",
+        operation_id="repositories__remove_admin",
+    )
+    def remove_admin(
+        self,
+        trans: SessionRequestContext = DependsOnTrans,
+        encoded_repository_id: str = RepositoryIdPathParam,
+        username: str = UsernameIdPathParam,
+    ) -> list[str]:
+        repository = get_repository_in_tool_shed(self.app, encoded_repository_id)
+        ensure_can_manage(trans, repository)
+        return remove_admin_user(self.app, repository, username)
 
     @router.post(
         "/api/repositories/{encoded_repository_id}/changeset_revision",
@@ -529,15 +577,15 @@ class FastAPIRepositories:
         self,
         request: Request,
         encoded_repository_id: str = RepositoryIdPathParam,
-        commit_message: Optional[str] = CommitMessageQueryParam,
+        commit_message: str | None = CommitMessageQueryParam,
         trans: SessionRequestContext = DependsOnTrans,
-        files: Optional[List[UploadFile]] = None,
+        files: list[UploadFile] | None = None,
         revision_request: RepositoryUpdateRequest = Depends(RepositoryUpdateRequestFormData.as_form),  # type: ignore[attr-defined]
     ) -> RepositoryUpdate:
         try:
             # Code stolen from Marius' work in Galaxy's Tools API.
 
-            files2: List[StarletteUploadFile] = cast(List[StarletteUploadFile], files or [])
+            files2: list[StarletteUploadFile] = cast(list[StarletteUploadFile], files or [])
             # FastAPI's UploadFile is a very light wrapper around starlette's UploadFile
             if not files2:
                 data = await request.form()

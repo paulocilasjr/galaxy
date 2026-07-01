@@ -28,7 +28,7 @@ const { canUseUnprivilegedTools } = storeToRefs(unprivilegedToolStore);
 
 const optionalActivities = computed(() => {
     return activityStore.activities.filter(
-        (a) => (a.optional && a.id !== "user-defined-tools") || canUseUnprivilegedTools.value
+        (a) => (a.optional && a.id !== "user-defined-tools") || canUseUnprivilegedTools.value,
     );
 });
 
@@ -110,28 +110,30 @@ function executeActivity(activity: Activity) {
                                 @click.stop="onRemove(activity)">
                                 <FontAwesomeIcon :icon="faTrash" fa-fw />
                             </GButton>
-                            <GButton
-                                v-if="activity.visible"
-                                tooltip
-                                size="small"
-                                transparent
-                                icon-only
-                                color="blue"
-                                title="Hide in Activity Bar"
-                                @click.stop="onFavorite(activity)">
-                                <FontAwesomeIcon :icon="faStar" fa-fw />
-                            </GButton>
-                            <GButton
-                                v-else
-                                tooltip
-                                transparent
-                                icon-only
-                                color="blue"
-                                size="small"
-                                title="Show in Activity Bar"
-                                @click.stop="onFavorite(activity)">
-                                <FontAwesomeIcon :icon="faStarRegular" fa-fw />
-                            </GButton>
+                            <template v-if="activity.optional">
+                                <GButton
+                                    v-if="activity.visible"
+                                    tooltip
+                                    size="small"
+                                    transparent
+                                    icon-only
+                                    color="blue"
+                                    title="Hide in Activity Bar"
+                                    @click.stop="onFavorite(activity)">
+                                    <FontAwesomeIcon :icon="faStar" fa-fw />
+                                </GButton>
+                                <GButton
+                                    v-else
+                                    tooltip
+                                    transparent
+                                    icon-only
+                                    color="blue"
+                                    size="small"
+                                    title="Show in Activity Bar"
+                                    @click.stop="onFavorite(activity)">
+                                    <FontAwesomeIcon :icon="faStarRegular" fa-fw />
+                                </GButton>
+                            </template>
                         </div>
                     </span>
                 </div>
@@ -147,7 +149,7 @@ function executeActivity(activity: Activity) {
 </template>
 
 <style lang="scss">
-@import "theme/blue.scss";
+@import "@/style/scss/theme/blue.scss";
 
 .activity-settings-item {
     background: none;

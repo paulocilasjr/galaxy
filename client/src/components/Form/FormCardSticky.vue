@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { faWrench, type IconDefinition } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BAlert } from "bootstrap-vue";
 
 import { absPath } from "@/utils/redirect";
 
+import GAlert from "@/components/BaseComponents/GAlert.vue";
 import Heading from "@/components/Common/Heading.vue";
 import LoadingSpan from "@/components/LoadingSpan.vue";
 
@@ -20,15 +20,15 @@ withDefaults(
     }>(),
     {
         isLoading: false,
-    }
+    },
 );
 </script>
 
 <template>
-    <BAlert v-if="errorMessage" variant="danger" show>{{ errorMessage }}</BAlert>
+    <GAlert v-if="errorMessage" variant="danger" show>{{ errorMessage }}</GAlert>
     <LoadingSpan v-else-if="isLoading" />
     <div v-else>
-        <div class="position-relative">
+        <div class="position-relative pb-4">
             <div class="ui-form-header-underlay sticky-top" />
             <div class="tool-header sticky-top bg-secondary px-2 py-1 rounded">
                 <div class="d-flex justify-content-between">
@@ -37,7 +37,13 @@ withDefaults(
                         <FontAwesomeIcon v-else :icon="icon || faWrench" class="fa-fw" />
                         <Heading h1 inline bold size="text" itemprop="name">{{ name }}</Heading>
                         <span itemprop="description">{{ description }}</span>
-                        <span v-if="version" class="text-muted">(Galaxy Version {{ version }})</span>
+                        <span
+                            v-if="version"
+                            class="text-muted"
+                            data-description="galaxy tool version"
+                            :data-version="version"
+                            >(Galaxy Version {{ version }})</span
+                        >
                     </div>
                     <div class="d-flex flex-nowrap align-items-start flex-gapx-1">
                         <slot name="buttons" />

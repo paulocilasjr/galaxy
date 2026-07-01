@@ -1,5 +1,5 @@
 import { faFile, faFolder } from "@fortawesome/free-regular-svg-icons";
-import { faPencilAlt } from "@fortawesome/free-solid-svg-icons";
+import { faCodeBranch, faPencilAlt } from "@fortawesome/free-solid-svg-icons";
 import type { IconDefinition } from "font-awesome-6";
 
 export interface WorkflowInput {
@@ -9,6 +9,7 @@ export interface WorkflowInput {
     description: string;
     stateOverwrites?: {
         parameter_type?: "text" | "integer" | "boolean" | "color" | "float" | "directory_uri";
+        collection_type?: "sample_sheet";
     };
     icon: IconDefinition;
 }
@@ -26,6 +27,15 @@ export function getWorkflowInputs(): WorkflowInput[] {
             title: "Input Dataset Collection",
             description: "Input for a collection of datasets",
             icon: faFolder,
+        },
+        {
+            moduleId: "data_collection_input",
+            title: "Input Sample Sheet Collection",
+            description: "Input for a collection of datasets with attached sample sheet metadata",
+            icon: faFolder,
+            stateOverwrites: {
+                collection_type: "sample_sheet",
+            },
         },
         {
             moduleId: "parameter_input",
@@ -85,6 +95,12 @@ export function getWorkflowInputs(): WorkflowInput[] {
             stateOverwrites: {
                 parameter_type: "directory_uri",
             },
+        },
+        {
+            moduleId: "pick_value",
+            title: "Pick Value",
+            description: "Select among conditional branch outputs",
+            icon: faCodeBranch,
         },
     ];
 }

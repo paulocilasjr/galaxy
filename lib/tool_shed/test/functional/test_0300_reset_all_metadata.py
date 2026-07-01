@@ -1,9 +1,7 @@
-from typing import Dict
-
 import pytest
 
 from ..base import common
-from ..base.twilltestcase import ShedTwillTestCase
+from ..base.testcase import ShedTestCase
 
 column_maker_repository_name = "column_maker_0020"
 column_maker_repository_description = "A flexible aligner."
@@ -42,7 +40,7 @@ category_0050_description = "Test circular dependency features"
 running_standalone = False
 
 
-class TestResetAllRepositoryMetadata(ShedTwillTestCase):
+class TestResetAllRepositoryMetadata(ShedTestCase):
     """Verify that the "Reset selected metadata" feature works."""
 
     def test_0000_initiate_users(self):
@@ -547,8 +545,8 @@ class TestResetAllRepositoryMetadata(ShedTwillTestCase):
     def test_0110_reset_metadata_on_all_repositories(self):
         """Reset metadata on all repositories, then verify that it has not changed."""
         self.login(email=common.admin_email, username=common.admin_username)
-        old_metadata: Dict[str, Dict] = {}
-        new_metadata: Dict[str, Dict] = {}
+        old_metadata: dict[str, dict] = {}
+        new_metadata: dict[str, dict] = {}
         repositories = self.test_db_util.get_all_repositories()
         for repository in repositories:
             old_metadata[self.security.encode_id(repository.id)] = {}

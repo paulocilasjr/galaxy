@@ -1,4 +1,3 @@
-import sys
 from string import Template
 
 import lxml.etree as ET
@@ -180,8 +179,7 @@ invalid_xml_assertions = [
 ]
 
 
-TOOL_TEMPLATE = Template(
-    """
+TOOL_TEMPLATE = Template("""
 <tool id="gx_test" name="gx_test" version="1.0.0">
     <command><![CDATA[
 echo '$parameter' >> '$output'
@@ -203,12 +201,7 @@ echo '$parameter' >> '$output'
         </test>
     </tests>
 </tool>
-"""
-)
-
-
-if sys.version_info < (3, 8):  # noqa: UP036
-    pytest.skip(reason="Pydantic assertion models require python3.8 or higher", allow_module_level=True)
+""")
 
 
 def test_valid_json_models_validate():

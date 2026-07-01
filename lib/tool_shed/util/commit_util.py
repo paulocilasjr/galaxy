@@ -7,11 +7,7 @@ import shutil
 import tempfile
 from collections import namedtuple
 from typing import (
-    List,
-    Optional,
-    Tuple,
     TYPE_CHECKING,
-    Union,
 )
 
 from sqlalchemy import select
@@ -159,7 +155,7 @@ def handle_bz2(repository: "Repository", uploaded_file_name):
     shutil.move(uncompressed.name, uploaded_file_name)
 
 
-ChangeResponseT = Tuple[Union[bool, str], str, List[str], str, int, int]
+ChangeResponseT = tuple[bool | str, str, list[str], str, int, int]
 
 
 def handle_directory_changes(
@@ -174,7 +170,7 @@ def handle_directory_changes(
     commit_message: str,
     undesirable_dirs_removed: int,
     undesirable_files_removed: int,
-    repo_path: Optional[str] = None,
+    repo_path: str | None = None,
     dry_run: bool = False,
 ) -> ChangeResponseT:
     repo_path = repo_path or repository.repo_path(app)

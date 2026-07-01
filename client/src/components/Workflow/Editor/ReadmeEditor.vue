@@ -44,7 +44,7 @@ watch(
     (newValue) => {
         readmeCurrent.value = newValue ?? "";
     },
-    { immediate: true }
+    { immediate: true },
 );
 </script>
 
@@ -65,7 +65,7 @@ watch(
                 </BButton>
             </BButtonGroup>
             <BButton
-                v-b-tooltip.hover.noninteractive
+                v-g-tooltip.hover
                 size="sm"
                 variant="outline-danger"
                 title="Return to Workflow"
@@ -94,6 +94,11 @@ watch(
 
 <style scoped>
 .workflow-readme-textarea {
-    font: 14px/1.7 Menlo, Consolas, Monaco, "Andale Mono", monospace;
+    font:
+        14px/1.7 Menlo,
+        Consolas,
+        Monaco,
+        "Andale Mono",
+        monospace;
 }
 </style>

@@ -1,13 +1,9 @@
 import threading
 from typing import (
     Any,
-    Dict,
-    List,
-    Optional,
     runtime_checkable,
     TYPE_CHECKING,
     TypeVar,
-    Union,
 )
 
 from typing_extensions import Protocol
@@ -31,7 +27,7 @@ class DataManagerInterface(Protocol):
 
     def process_result(self, out_data): ...
 
-    def write_bundle(self, out: Dict[str, OutputDataset]) -> Dict[str, OutputDataset]: ...
+    def write_bundle(self, out: dict[str, OutputDataset]) -> dict[str, OutputDataset]: ...
 
 
 class DataManagersInterface(Protocol):
@@ -40,11 +36,11 @@ class DataManagersInterface(Protocol):
 
     def load_manager_from_elem(
         self, data_manager_elem, tool_path=None, add_manager=True
-    ) -> Optional[DataManagerInterface]: ...
+    ) -> DataManagerInterface | None: ...
 
-    def get_manager(self, data_manager_id: str) -> Optional[DataManagerInterface]: ...
+    def get_manager(self, data_manager_id: str) -> DataManagerInterface | None: ...
 
-    def remove_manager(self, manager_ids: Union[str, List[str]]) -> None: ...
+    def remove_manager(self, manager_ids: str | list[str]) -> None: ...
 
 
 ToolBoxType = TypeVar("ToolBoxType", bound="AbstractToolBox", contravariant=True)
@@ -58,6 +54,8 @@ class InstallationTarget(HasToolBox, Protocol[ToolBoxType]):
     config: Any
     installed_repository_manager: "InstalledRepositoryManager"
     _toolbox_lock: threading.RLock
-    tool_data_tables: ToolDataTableManager
+
+    @property
+    def tool_data_tables(self) -> ToolDataTableManager: ...
 
     def wait_for_toolbox_reload(self, old_toolbox: ToolBoxType) -> None: ...

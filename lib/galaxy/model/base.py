@@ -13,11 +13,7 @@ from inspect import (
 )
 from types import ModuleType
 from typing import (
-    Dict,
-    List,
-    Type,
     TYPE_CHECKING,
-    Union,
 )
 
 from sqlalchemy import event
@@ -30,6 +26,8 @@ from sqlalchemy.orm import (
 from galaxy.util.bunch import Bunch
 
 if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
+
     from galaxy.model import (
         APIKeys as GalaxyAPIKeys,
         GalaxySession as GalaxyGalaxySession,
@@ -49,7 +47,7 @@ log = logging.getLogger(__name__)
 # of a request (which run within a threadpool) to see changes to the ContextVar
 # state. See https://github.com/tiangolo/fastapi/issues/953#issuecomment-586006249
 # for details
-REQUEST_ID: ContextVar[Union[Dict[str, str], None]] = ContextVar("request_id", default=None)
+REQUEST_ID: ContextVar[dict[str, str] | None] = ContextVar("request_id", default=None)
 
 
 def check_database_connection(session):
@@ -64,14 +62,14 @@ def check_database_connection(session):
     if isinstance(session, scoped_session):
         session = session()
     trans = session.get_transaction()
-    if (trans and not trans.is_active) or session.connection().invalidated:
+    if trans and (not trans.is_active or session.connection().invalidated):
         session.rollback()
         log.error("Database transaction rolled back due to inactive session transaction or invalid connection state.")
 
 
 # TODO: Refactor this to be a proper class, not a bunch.
 class ModelMapping(Bunch):
-    def __init__(self, model_modules: List[ModuleType], engine):
+    def __init__(self, model_modules: list[ModuleType], engine: "Engine") -> None:
         self.engine = engine
         self._SessionLocal = sessionmaker(autoflush=False)
         versioned_session(self._SessionLocal)
@@ -79,7 +77,7 @@ class ModelMapping(Bunch):
         self.session = context
         self.scoped_registry = context.registry
 
-        model_classes: Dict[str, type] = {}
+        model_classes: dict[str, type] = {}
         for module in model_modules:
             name_class_pairs = getmembers(module, isclass)
             filtered_module_classes_dict = dict(m for m in name_class_pairs if m[1].__module__ == module.__name__)
@@ -143,10 +141,10 @@ class SharedModelMapping(ModelMapping):
     a way to do app.model.<CLASS> for common code shared by the tool shed and Galaxy.
     """
 
-    User: Union[Type["GalaxyUser"], Type["ToolShedUser"]]
-    GalaxySession: Union[Type["GalaxyGalaxySession"], Type["ToolShedGalaxySession"]]
-    APIKeys: Union[Type["GalaxyAPIKeys"], Type["ToolShedAPIKeys"]]
-    PasswordResetToken: Union[Type["GalaxyPasswordResetToken"], Type["ToolShedPasswordResetToken"]]
+    User: type["GalaxyUser"] | type["ToolShedUser"]
+    GalaxySession: type["GalaxyGalaxySession"] | type["ToolShedGalaxySession"]
+    APIKeys: type["GalaxyAPIKeys"] | type["ToolShedAPIKeys"]
+    PasswordResetToken: type["GalaxyPasswordResetToken"] | type["ToolShedPasswordResetToken"]
 
 
 def versioned_objects(iter):

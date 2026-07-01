@@ -5,21 +5,22 @@ import logging
 import operator
 import os
 import re
+from collections.abc import Callable
+from decimal import Decimal
 from tempfile import NamedTemporaryFile
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
     Optional,
     TYPE_CHECKING,
-    Union,
 )
 
 from galaxy.model import (
+    Dataset,
     DatasetInstance,
     HistoryDatasetAssociation,
     HistoryDatasetCollectionAssociation,
+    JOB_IO_NAME_MAX_LENGTH,
+    JobOutputNameTooLongError,
 )
 from galaxy.model.dataset_collections import builder
 from galaxy.model.dataset_collections.structure import UninitializedTree
@@ -28,6 +29,7 @@ from galaxy.model.store.discover import (
     discover_target_directory,
     DiscoveredFile,
     JsonCollectedDatasetMatch,
+    MaxDiscoveredFilesExceededError,
     MetadataSourceProvider as AbstractMetadataSourceProvider,
     ModelPersistenceContext,
     PermissionProvider as AbstractPermissionProvider,
@@ -58,7 +60,10 @@ from galaxy.util import (
 )
 
 if TYPE_CHECKING:
-    from galaxy.model import LibraryFolder
+    from galaxy.model import (
+        Job,
+        LibraryFolder,
+    )
     from galaxy.model.store import (
         BaseDirectoryImportModelStore,
         DirectoryModelExportStore,
@@ -110,9 +115,14 @@ class MetadataSourceProvider(AbstractMetadataSourceProvider):
         return self._inp_data[input_name]
 
 
+def copy_collection_metadata_from_target_dict(hdca, target: dict):
+    if "column_definitions" in target:
+        hdca.collection.column_definitions = target["column_definitions"]
+
+
 def collect_dynamic_outputs(
     job_context: "BaseJobContext",
-    output_collections: Dict[str, Any],
+    output_collections: dict[str, Any],
 ):
     # unmapped outputs do not correspond to explicit outputs of the tool, they were inferred entirely
     # from the tool provided metadata (e.g. galaxy.json).
@@ -121,6 +131,15 @@ def collect_dynamic_outputs(
         assert "elements" in unnamed_output_dict
         destination = unnamed_output_dict["destination"]
         elements = unnamed_output_dict["elements"]
+
+        # If rows are specified at the collection level, add them to individual elements
+        # This is a defensive check in case rows weren't already distributed in data_fetch.py
+        if "rows" in unnamed_output_dict:
+            rows_dict = unnamed_output_dict["rows"]
+            for element in elements:
+                element_name = element.get("name")
+                if element_name and element_name in rows_dict and "row" not in element:
+                    element["row"] = rows_dict[element_name]
 
         assert "type" in destination
         destination_type = destination["type"]
@@ -146,6 +165,7 @@ def collect_dynamic_outputs(
                 collection_type_description = COLLECTION_TYPE_DESCRIPTION_FACTORY.for_collection_type(collection_type)
                 structure = UninitializedTree(collection_type_description)
                 hdca = job_context.create_hdca(name, structure)
+                copy_collection_metadata_from_target_dict(hdca, unnamed_output_dict)
                 output_collections[name] = hdca
                 job_context.add_dataset_collection(hdca)
             error_message = unnamed_output_dict.get("error_message")
@@ -173,6 +193,9 @@ def collect_dynamic_outputs(
 
         # We are adding dynamic collections, which may be precreated, but their actually state is still new!
         collection.populated_state = collection.populated_states.NEW
+        # Clear any existing elements to avoid duplicates when re-populating
+        collection.elements.clear()
+        collection.element_count = None
 
         try:
             collection_builder = builder.BoundCollectionBuilder(collection)
@@ -191,6 +214,16 @@ def collect_dynamic_outputs(
                 change_datatype_actions=job_context.change_datatype_actions,
             )
             collection_builder.populate()
+        except MaxDiscoveredFilesExceededError:
+            # Mark the collection as population-failed so it is not left in NEW,
+            # then let the outer metadata/job handler record this in job_messages.
+            collection.handle_population_failed("Job generated more than the maximum number of output datasets.")
+            # Register the (failed) collection with the job context so that in
+            # the extended-metadata path the updated populated_state is
+            # serialized to the export store, and the host side imports the
+            # FAILED collection state rather than leaving it stuck in NEW.
+            job_context.add_dataset_collection(has_collection)
+            raise
         except Exception:
             log.exception("Problem gathering output collection.")
             collection.handle_population_failed("Problem building datasets for collection.")
@@ -200,7 +233,7 @@ def collect_dynamic_outputs(
 
 class BaseJobContext(ModelPersistenceContext):
     final_job_state: "JobState"
-    max_discovered_files: Union[int, float]
+    max_discovered_files: int | float
     tool_provided_metadata: BaseToolProvidedMetadata
     job_working_directory: str
 
@@ -208,7 +241,7 @@ class BaseJobContext(ModelPersistenceContext):
         pass
 
     def find_files(self, output_name, collection, dataset_collectors):
-        discovered_files: List[DiscoveredFile] = []
+        discovered_files: list[DiscoveredFile] = []
         for discovered_file in discover_files(
             output_name, self.tool_provided_metadata, dataset_collectors, self.job_working_directory, collection
         ):
@@ -221,22 +254,22 @@ class BaseJobContext(ModelPersistenceContext):
 
     @property
     @abc.abstractmethod
-    def change_datatype_actions(self) -> Dict[str, Any]: ...
+    def change_datatype_actions(self) -> dict[str, Any]: ...
 
     @abc.abstractmethod
-    def create_hdca(self, name: str, structure: UninitializedTree) -> Union[HistoryDatasetCollectionAssociation]: ...
+    def create_hdca(self, name: str, structure: UninitializedTree) -> HistoryDatasetCollectionAssociation: ...
 
     @abc.abstractmethod
     def get_hdca(self, object_id) -> HistoryDatasetCollectionAssociation: ...
 
     @abc.abstractmethod
-    def get_library_folder(self, destination: Dict[str, Any]) -> "LibraryFolder": ...
+    def get_library_folder(self, destination: dict[str, Any]) -> "LibraryFolder": ...
 
     @abc.abstractmethod
-    def output_collection_def(self, name: str) -> Union[None, ToolOutputCollection]: ...
+    def output_collection_def(self, name: str) -> None | ToolOutputCollection: ...
 
     @abc.abstractmethod
-    def output_def(self, name: str) -> Union[None, ToolOutput]: ...
+    def output_def(self, name: str) -> None | ToolOutput: ...
 
 
 class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
@@ -246,12 +279,13 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
         self,
         metadata_params,
         tool_provided_metadata: BaseToolProvidedMetadata,
-        object_store: Optional[ObjectStore],
+        object_store: ObjectStore | None,
         export_store: Optional["DirectoryModelExportStore"],
         import_store: "BaseDirectoryImportModelStore",
         working_directory: str,
         final_job_state: "JobState",
-        max_discovered_files: Optional[int],
+        max_discovered_files: int | None,
+        job: Optional["Job"] = None,
     ):
         # TODO: use a metadata source provider... (pop from inputs and add parameter)
         super().__init__(object_store, export_store, working_directory)
@@ -261,6 +295,11 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
         self.final_job_state = final_job_state
         self.max_discovered_files = float("inf") if max_discovered_files is None else max_discovered_files
         self.discovered_file_count = 0
+        self._job = job
+
+    @property
+    def job(self):
+        return self._job
 
     @property
     def change_datatype_actions(self):
@@ -312,6 +351,11 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
             self.export_store.collection_datasets.add(collection_dataset.id)
 
     def add_output_dataset_association(self, name, dataset_instance):
+        if name and len(name) > JOB_IO_NAME_MAX_LENGTH:
+            raise JobOutputNameTooLongError(
+                f"Tool produced an output name that exceeds the {JOB_IO_NAME_MAX_LENGTH} character name length limit "
+                f"(got {len(name)} characters), tool is likely broken"
+            )
         assert self.export_store
         self.export_store.add_job_output_dataset_associations(self.get_job_id(), name, dataset_instance)
 
@@ -322,14 +366,14 @@ class SessionlessJobContext(SessionlessModelPersistenceContext, BaseJobContext):
         return self.metadata_params.get("implicit_collection_jobs_association_id")
 
 
-def collect_primary_datasets(job_context: BaseJobContext, output: Dict[str, DatasetInstance], input_ext):
+def collect_primary_datasets(job_context: BaseJobContext, output: dict[str, DatasetInstance], input_ext):
     job_working_directory = job_context.job_working_directory
 
     # Loop through output file names, looking for generated primary
     # datasets in form specified by discover dataset patterns or in tool provided metadata.
     new_outdata_name = None
-    primary_datasets: Dict[str, Dict[str, DatasetInstance]] = {}
-    storage_callbacks: List[Callable] = []
+    primary_datasets: dict[str, dict[str, DatasetInstance]] = {}
+    storage_callbacks: list[Callable] = []
     for name, outdata in output.items():
         primary_output_assigned = False
         dataset_collectors = [DEFAULT_DATASET_COLLECTOR]
@@ -344,6 +388,7 @@ def collect_primary_datasets(job_context: BaseJobContext, output: Dict[str, Data
         ):
             job_context.increment_discovered_file_count()
             filenames[discovered_file.path] = discovered_file
+        assert outdata.dataset is not None
         for filename_index, (filename, discovered_file) in enumerate(filenames.items()):
             extra_file_collector = discovered_file.collector
             fields_match = discovered_file.match
@@ -402,8 +447,15 @@ def collect_primary_datasets(job_context: BaseJobContext, output: Dict[str, Data
                 storage_callbacks=storage_callbacks,
                 purged=outdata.dataset.purged,
             )
-            # Associate new dataset with job
-            job_context.add_output_dataset_association(f"__new_primary_file_{name}|{designation}__", primary_data)
+            try:
+                # Associate new dataset with job
+                job_context.add_output_dataset_association(f"__new_primary_file_{name}|{designation}__", primary_data)
+            except JobOutputNameTooLongError:
+                assert primary_data.dataset is not None
+                primary_data.dataset.state = Dataset.states.DISCARDED
+                primary_data.dataset.file_size = Decimal(0)
+                job_context.add_datasets_to_history([primary_data], for_output_dataset=outdata)
+                raise
             job_context.add_datasets_to_history([primary_data], for_output_dataset=outdata)
             # Add dataset to return dict
             primary_datasets[name][designation] = primary_data

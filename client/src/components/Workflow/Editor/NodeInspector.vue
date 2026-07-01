@@ -48,6 +48,10 @@ function close() {
     inspectorStore.generalMaximized = false;
     emit("close");
 }
+
+function updateStored(v: boolean) {
+    inspectorStore.setStored(props.step, v);
+}
 </script>
 
 <template>
@@ -90,9 +94,7 @@ function close() {
                     </template>
 
                     <BDropdownForm form-class="px-2" title="remember size for all steps using this tool">
-                        <BFormCheckbox
-                            :checked="inspectorStore.isStored(props.step)"
-                            @input="(v) => inspectorStore.setStored(props.step, v)">
+                        <BFormCheckbox :checked="inspectorStore.isStored(props.step)" @input="updateStored">
                             remember size
                         </BFormCheckbox>
                     </BDropdownForm>
@@ -127,6 +129,7 @@ function close() {
                     :datatypes="datatypes"
                     @onSetData="(id, d) => emit('dataChanged', id, d)"
                     @onUpdateStep="(id, s) => emit('stepUpdated', id, s)"
+                    @onChangePostJobActions="(id, a) => emit('postJobActionsChanged', id, a)"
                     @onAnnotation="(id, a) => emit('annotationChanged', id, a)"
                     @onLabel="(id, l) => emit('labelChanged', id, l)"
                     @onEditSubworkflow="(id) => emit('editSubworkflow', id)"
@@ -137,7 +140,7 @@ function close() {
 </template>
 
 <style scoped lang="scss">
-@import "theme/blue.scss";
+@import "@/style/scss/theme/blue.scss";
 
 .tool-inspector {
     --clearance: 8px;

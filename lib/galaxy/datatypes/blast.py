@@ -30,15 +30,11 @@
 
 Covers the ``blastxml`` format and the BLAST databases.
 """
+
 import logging
 import os
+from collections.abc import Callable
 from time import sleep
-from typing import (
-    Callable,
-    Dict,
-    List,
-    Optional,
-)
 
 from galaxy.datatypes.protocols import (
     DatasetHasHidProtocol,
@@ -106,7 +102,7 @@ class BlastXml(GenericXml):
         return True
 
     @staticmethod
-    def merge(split_files: List[str], output_file: str) -> None:
+    def merge(split_files: list[str], output_file: str) -> None:
         """Merging multiple XML files is non-trivial and must be done in subclasses."""
         if len(split_files) == 1:
             # For one file only, use base class method (move/copy)
@@ -212,10 +208,10 @@ class _BlastDb(Data):
         trans,
         dataset: DatasetHasHidProtocol,
         preview: bool = False,
-        filename: Optional[str] = None,
-        to_ext: Optional[str] = None,
-        offset: Optional[int] = None,
-        ck_size: Optional[int] = None,
+        filename: str | None = None,
+        to_ext: str | None = None,
+        offset: int | None = None,
+        ck_size: int | None = None,
         **kwd,
     ):
         """
@@ -256,12 +252,12 @@ class _BlastDb(Data):
         return smart_str(f"<html><head><title>{title}</title></head><body><pre>{msg}</pre></body></html>"), headers
 
     @staticmethod
-    def merge(split_files: List[str], output_file: str) -> None:
+    def merge(split_files: list[str], output_file: str) -> None:
         """Merge BLAST databases (not implemented for now)."""
         raise NotImplementedError("Merging BLAST databases is non-trivial (do this via makeblastdb?)")
 
     @classmethod
-    def split(cls, input_datasets: List, subdir_generator_function: Callable, split_params: Optional[Dict]) -> None:
+    def split(cls, input_datasets: list, subdir_generator_function: Callable, split_params: dict | None) -> None:
         """Split a BLAST database (not implemented for now)."""
         if split_params is None:
             return None

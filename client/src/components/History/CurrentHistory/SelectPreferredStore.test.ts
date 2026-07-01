@@ -1,11 +1,9 @@
+import { getLocalVue } from "@tests/vitest/helpers";
 import { mount } from "@vue/test-utils";
-import axios from "axios";
-import MockAdapter from "axios-mock-adapter";
 import flushPromises from "flush-promises";
-import { getLocalVue } from "tests/jest/helpers";
-import { h } from "vue";
+import { beforeEach, describe, expect, it } from "vitest";
 
-import { useServerMock } from "@/api/client/__mocks__";
+import { HttpResponse, useServerMock } from "@/api/client/__mocks__";
 import { ROOT_COMPONENT } from "@/utils/navigation/schema";
 
 import { setupSelectableMock } from "../../ObjectStore/mockServices";
@@ -25,15 +23,49 @@ const TEST_HISTORY = {
     preferred_object_store_id: null,
 };
 
-async function mountComponent() {
+interface PutRequest {
+    url: string;
+    data: Record<string, unknown>;
+}
+
+let putRequests: PutRequest[] = [];
+
+async function mountComponent(preferredObjectStoreId: string | null = null) {
     server.use(
         http.get("/api/configuration", ({ response }) => {
             return response(200).json({});
-        })
+        }),
+        http.get("/api/users/{user_id}/usage/{label}", ({ response }) => {
+            return response(200).json({
+                total_disk_usage: 0,
+            });
+        }),
+        http.untyped.put(`/api/histories/${TEST_HISTORY_ID}`, async ({ request }) => {
+            const data = (await request.json()) as Record<string, unknown>;
+            putRequests.push({ url: request.url, data });
+            return HttpResponse.json({}, { status: 202 });
+        }),
     );
+
     const wrapper = mount(SelectPreferredStore as object, {
-        propsData: { userPreferredObjectStoreId: null, history: TEST_HISTORY },
+        propsData: {
+            preferredObjectStoreId: preferredObjectStoreId,
+            history: TEST_HISTORY,
+            showModal: true,
+        },
         localVue,
+        stubs: {
+            BModal: {
+                template: `
+                    <div>
+                        <slot></slot>
+                        <div class="modal-footer">
+                            <button class="btn btn-primary" @click="$emit('ok')">OK</button>
+                        </div>
+                    </div>
+                `,
+            },
+        },
     });
 
     await flushPromises();
@@ -43,61 +75,57 @@ async function mountComponent() {
 
 const PREFERENCES = ROOT_COMPONENT.preferences;
 
-// bootstrap vue will try to match targets to actual HTML elements in DOM but there
-// may be no DOM for jest tests, just stub out an alternative minimal implementation.
-jest.mock("@/components/ObjectStore/ObjectStoreSelectButtonPopover.vue", () => ({
-    name: "ObjectStoreSelectButtonPopover",
-    render: () => h("div", "Mocked Popover"),
-}));
-
 describe("SelectPreferredStore.vue", () => {
-    let axiosMock: MockAdapter;
-
     beforeEach(async () => {
-        axiosMock = new MockAdapter(axios);
-    });
-
-    afterEach(async () => {
-        axiosMock.restore();
+        putRequests = [];
     });
 
     it("updates object store to default on selection null", async () => {
-        const wrapper = await mountComponent();
-        const els = wrapper.findAll(PREFERENCES.object_store_selection.option_buttons.selector);
+        const wrapper = await mountComponent("object_store_1");
+        const els = wrapper.findAll(PREFERENCES.object_store_selection.option_cards.selector);
         expect(els.length).toBe(3);
         const galaxyDefaultOption = wrapper.find(
-            PREFERENCES.object_store_selection.option_button({ object_store_id: "__null__" }).selector
+            PREFERENCES.object_store_selection.option_card_select({ object_store_id: "__null__" }).selector,
         );
         expect(galaxyDefaultOption.exists()).toBeTruthy();
-        axiosMock
-            .onPut(`/api/histories/${TEST_HISTORY_ID}`, expect.objectContaining({ preferred_object_store_id: null }))
-            .reply(202);
         await galaxyDefaultOption.trigger("click");
         await flushPromises();
         const errorEl = wrapper.find(".object-store-selection-error");
         expect(errorEl.exists()).toBeFalsy();
+
+        const okButton = wrapper.find(".btn-primary");
+        await okButton.trigger("click");
+
+        await flushPromises();
+
+        expect(putRequests.length).toBe(1);
+        expect(putRequests[0]?.data.preferred_object_store_id).toEqual(null);
+
         const emitted = wrapper.emitted();
         expect(emitted["updated"]?.[0]?.[0]).toEqual(null);
     });
 
     it("updates object store to on non-null selection", async () => {
         const wrapper = await mountComponent();
-        const els = wrapper.findAll(PREFERENCES.object_store_selection.option_buttons.selector);
+        const els = wrapper.findAll(PREFERENCES.object_store_selection.option_cards.selector);
         expect(els.length).toBe(3);
         const galaxyDefaultOption = wrapper.find(
-            PREFERENCES.object_store_selection.option_button({ object_store_id: "object_store_2" }).selector
+            PREFERENCES.object_store_selection.option_card_select({ object_store_id: "object_store_2" }).selector,
         );
         expect(galaxyDefaultOption.exists()).toBeTruthy();
-        axiosMock
-            .onPut(
-                `/api/histories/${TEST_HISTORY_ID}`,
-                expect.objectContaining({ preferred_object_store_id: "object_store_2" })
-            )
-            .reply(202);
         await galaxyDefaultOption.trigger("click");
         await flushPromises();
         const errorEl = wrapper.find(".object-store-selection-error");
         expect(errorEl.exists()).toBeFalsy();
+
+        const okButton = wrapper.find(".btn-primary");
+        await okButton.trigger("click");
+
+        await flushPromises();
+
+        expect(putRequests.length).toBe(1);
+        expect(putRequests[0]?.data.preferred_object_store_id).toEqual("object_store_2");
+
         const emitted = wrapper.emitted();
         expect(emitted["updated"]?.[0]?.[0]).toEqual("object_store_2");
     });

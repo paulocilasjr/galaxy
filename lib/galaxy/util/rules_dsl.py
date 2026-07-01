@@ -1,14 +1,14 @@
 import abc
 import itertools
 import re
-from typing import (
-    List,
-    Type,
-)
 
 import yaml
 
 from galaxy.util.resources import resource_string
+
+
+class RulesDSLError(Exception):
+    pass
 
 
 def get_rules_specification():
@@ -25,8 +25,7 @@ def _ensure_rule_contains_keys(rule, keys):
 
 
 def _ensure_key_value_in(rule, key, values):
-    value = rule[key]
-    if value not in values:
+    if (value := rule[key]) not in values:
         raise ValueError(f"Invalid value [{value}] for [{key}] encountered.")
 
 
@@ -48,11 +47,11 @@ def apply_regex(regex, target, data, replacement=None, group_count=None, allow_u
                         new_columns = ["" for _ in range(group_count)]
                     result = row + new_columns
                 else:
-                    raise Exception(f"Problem applying regular expression [{regex}] to [{source}].")
+                    raise RulesDSLError(f"Problem applying regular expression [{regex}] to [{source}].")
             else:
                 if group_count:
                     if len(match.groups()) != group_count:
-                        raise Exception("Problem applying regular expression, wrong number of groups found.")
+                        raise RulesDSLError("Problem applying regular expression, wrong number of groups found.")
 
                     result = row + list(match.groups())
                 else:
@@ -65,7 +64,7 @@ def apply_regex(regex, target, data, replacement=None, group_count=None, allow_u
                 if allow_unmatched:
                     result = row + [""]
                 else:
-                    raise Exception(f"Problem applying regular expression [{regex}] to [{source}].")
+                    raise RulesDSLError(f"Problem applying regular expression [{regex}] to [{source}].")
 
         return result
 
@@ -273,6 +272,29 @@ class AddColumnSubstrRuleDefinition(BaseRuleDefinition):
             return row + [original_value[start:end]]
 
         return list(map(new_row, data)), sources
+
+
+class AddColumnFromSampleSheetByIndex(BaseRuleDefinition):
+    rule_type = "add_column_from_sample_sheet_index"
+
+    def validate_rule(self, rule):
+        _ensure_rule_contains_keys(
+            rule,
+            {
+                "value": int,
+            },
+        )
+
+    def apply(self, rule, data, sources):
+        sample_sheet_column_index = rule["value"]
+
+        new_rows = []
+        for index, row in enumerate(data):
+            source = sources[index]
+            columns = source["columns"]
+            new_rows.append(row + [columns[sample_sheet_column_index]])
+
+        return new_rows, sources
 
 
 class RemoveColumnsRuleDefinition(BaseRuleDefinition):
@@ -596,6 +618,8 @@ class RuleSet:
             identifier_columns.extend(mapping_as_dict["list_identifiers"]["columns"])
         if "paired_identifier" in mapping_as_dict:
             identifier_columns.append(mapping_as_dict["paired_identifier"]["columns"][0])
+        if "paired_or_unpaired_identifier" in mapping_as_dict:
+            identifier_columns.append(mapping_as_dict["paired_or_unpaired_identifier"]["columns"][0])
 
         return identifier_columns
 
@@ -609,6 +633,11 @@ class RuleSet:
                 collection_type += ":paired"
             else:
                 collection_type = "paired"
+        if "paired_or_unpaired_identifier" in mapping_as_dict:
+            if collection_type:
+                collection_type += ":paired_or_unpaired"
+            else:
+                collection_type = "paired_or_unpaired"
         return collection_type
 
     @property
@@ -620,7 +649,7 @@ class RuleSet:
         return message
 
 
-RULES_DEFINITION_CLASSES: List[Type[BaseRuleDefinition]] = [
+RULES_DEFINITION_CLASSES: list[type[BaseRuleDefinition]] = [
     AddColumnMetadataRuleDefinition,
     AddColumnGroupTagValueRuleDefinition,
     AddColumnConcatenateRuleDefinition,
@@ -629,6 +658,7 @@ RULES_DEFINITION_CLASSES: List[Type[BaseRuleDefinition]] = [
     AddColumnRownumRuleDefinition,
     AddColumnValueRuleDefinition,
     AddColumnSubstrRuleDefinition,
+    AddColumnFromSampleSheetByIndex,
     RemoveColumnsRuleDefinition,
     AddFilterRegexRuleDefinition,
     AddFilterCountRuleDefinition,

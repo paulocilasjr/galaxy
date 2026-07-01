@@ -8,10 +8,8 @@ from collections import namedtuple
 from errno import ENOENT
 from typing import (
     Any,
-    Dict,
-    List,
+    Literal,
     Optional,
-    Tuple,
     TYPE_CHECKING,
     Union,
 )
@@ -20,7 +18,6 @@ from uuid import UUID
 
 from markupsafe import escape
 from typing_extensions import (
-    Literal,
     overload,
 )
 
@@ -56,6 +53,11 @@ from .views.edam import (
     EdamPanelMode,
     EdamToolPanelView,
 )
+from .views.favorites import (
+    MY_TOOLS_PANEL_SECTION_ID,
+    MY_TOOLS_PANEL_VIEW_ID,
+    MyToolsToolPanelView,
+)
 from .views.interface import (
     ToolBoxRegistry,
     ToolPanelView,
@@ -68,8 +70,13 @@ if TYPE_CHECKING:
     from galaxy.model import (
         DynamicTool,
         User,
+        Workflow,
     )
+    from galaxy.model.tool_shed_install import ToolShedRepository
     from galaxy.tools import Tool
+    from galaxy.tools.cache import ToolCache
+    from galaxy.util import Element
+    from galaxy.util.path import StrPath
 
 log = logging.getLogger(__name__)
 
@@ -118,14 +125,14 @@ class ToolBoxRegistryImpl(ToolBoxRegistry):
     def get_tool(self, tool_id: str):
         return self.__toolbox.get_tool(tool_id)
 
-    def get_workflow(self, id: str):
+    def get_workflow(self, id: str) -> "Workflow":
         return self.__toolbox._workflows_by_id[id]
 
     def add_tool_to_tool_panel_view(self, tool, tool_panel_component) -> None:
         self.__toolbox.add_tool_to_tool_panel_view(tool, tool_panel_component)
 
 
-DynamicToolConfDict = Dict[str, Any]
+DynamicToolConfDict = dict[str, Any]
 
 
 class AbstractToolTagManager(metaclass=abc.ABCMeta):
@@ -160,18 +167,18 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
     workflows optionally in labelled sections.
     """
 
-    _dynamic_tool_confs: List[DynamicToolConfDict]
-    _tool_panel_views: Dict[str, ToolPanelView]
+    _dynamic_tool_confs: list[DynamicToolConfDict]
+    _tool_panel_views: dict[str, ToolPanelView]
 
     def __init__(
         self,
-        config_filenames,
+        config_filenames: list[str],
         tool_root_dir,
         app,
         view_sources=None,
         default_panel_view="default",
-        save_integrated_tool_panel=True,
-    ):
+        save_integrated_tool_panel: bool = True,
+    ) -> None:
         """
         Create a toolbox from the config files named by `config_filenames`, using
         `tool_root_dir` as the base directory for finding individual tool config files.
@@ -181,21 +188,28 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         # information about the tools defined in each shed-related
         # shed_tool_conf.xml file.
         self._dynamic_tool_confs = []
-        self._tools_by_id = {}
-        self._tools_by_uuid = {}
+        self._tools_by_id: dict[str, Tool] = {}
+        self._tools_by_uuid: dict[UUID, Tool] = {}
         # Tool lineages can contain chains of related tools with different ids
         # so each will be present once in the above dictionary. The following
         # dictionary can instead hold multiple tools with different versions.
-        self._tool_versions_by_id = {}
-        self._tools_by_old_id = {}
-        self._workflows_by_id = {}
-        # Cache for tool's to_dict calls specific to toolbox. Invalidates on toolbox reload.
-        self._tool_to_dict_cache = {}
-        self._tool_to_dict_cache_admin = {}
+        self._tool_versions_by_id: dict[str, dict[str | None, Tool]] = {}
+        self._tools_by_old_id: dict[str, list[Tool]] = {}
+        self._workflows_by_id: dict[str, Workflow] = {}
+        # Cache for tool's to_dict calls specific to toolbox. Invalidated on toolbox reload
+        # and whenever a single tool is reloaded/removed (see _invalidate_tool_caches).
+        self._tool_to_dict_cache: dict[str, dict[str, Any]] = {}
+        self._tool_to_dict_cache_admin: dict[str, dict[str, Any]] = {}
+        # Lazily-built sets of curated/edam ids drawn from the loaded tools, used to
+        # validate favorite-tag / favorite-EDAM additions in O(1) rather than walking
+        # the full tool list per request.
+        self._curated_tool_tags: frozenset[str] | None = None
+        self._tool_edam_operations: frozenset[str] | None = None
+        self._tool_edam_topics: frozenset[str] | None = None
         # In-memory dictionary that defines the layout of the tool panel.
         self._tool_panel = ToolPanelElements()
         self._index = 0
-        self.data_manager_tools = {}
+        self.data_manager_tools: dict[str, Tool] = {}
         self._lineage_map = LineageMap(app)
         # Sets self._integrated_tool_panel and self._integrated_tool_panel_config_has_contents
         self._init_integrated_tool_panel(app.config)
@@ -237,8 +251,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                     searchable=True,
                 )
 
-        tool_panel_views_list: List[ToolPanelView] = [
+        tool_panel_views_list: list[ToolPanelView] = [
             DefaultToolPanelView(),
+            MyToolsToolPanelView(),
         ]
 
         for edam_view in listify(self.app.config.edam_panel_views):
@@ -266,23 +281,23 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             config_value = getattr(config, "default_panel_view", None)
         return config_value or self.__default_panel_view
 
-    def create_tool(self, config_file, tool_cache_data_dir=None, **kwds):
+    def create_tool(self, config_file: "StrPath", **kwds) -> "Tool":
         raise NotImplementedError()
 
-    def create_dynamic_tool(self, dynamic_tool: "DynamicTool"):
+    def create_dynamic_tool(self, dynamic_tool: "DynamicTool") -> "Tool":
         raise NotImplementedError()
 
     def can_load_config_file(self, config_filename):
         return True
 
-    def _load_workflow(self, workflow_id):
+    def _load_workflow(self, workflow_id: str) -> "Workflow":
         raise NotImplementedError()
 
     def tool_tag_manager(self):
         """Build a tool tag manager according to app's configuration and return it."""
         raise NotImplementedError()
 
-    def _init_tools_from_configs(self, config_filenames):
+    def _init_tools_from_configs(self, config_filenames: list[str]) -> None:
         """Read through all tool config files and initialize tools in each
         with init_tools_from_config below.
         """
@@ -315,7 +330,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 log.exception("Error loading tools defined in config %s", config_filename)
         log.debug("Reading tools from config files finished %s", execution_timer)
 
-    def _init_tools_from_config(self, config_filename):
+    def _init_tools_from_config(self, config_filename: str) -> None:
         """
         Read the configuration file and load each tool.  The following tags are currently supported:
 
@@ -354,7 +369,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 return
             raise
         tool_path = tool_conf_source.parse_tool_path()
-        tool_cache_data_dir = tool_conf_source.parse_tool_cache_data_dir()
         parsing_shed_tool_conf = tool_conf_source.is_shed_tool_conf()
         if parsing_shed_tool_conf:
             # Keep an in-memory list of xml elements to enable persistence of the changing tool config.
@@ -372,7 +386,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             self.load_item(
                 item,
                 tool_path=tool_path,
-                tool_cache_data_dir=tool_cache_data_dir,
                 load_panel_dict=load_panel_dict,
                 guid=item.get("guid"),
                 index=index,
@@ -384,37 +397,39 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 shed_tool_conf_dict = dict(
                     config_filename=config_filename,
                     tool_path=tool_path,
-                    tool_cache_data_dir=tool_cache_data_dir,
                     config_elems=config_elems,
                 )
                 self._dynamic_tool_confs.append(shed_tool_conf_dict)
 
-    def _get_tool_by_uuid(self, tool_uuid):
+    def _get_tool_by_uuid(self, tool_uuid: UUID) -> Union["Tool", None]:
         if tool_uuid in self._tools_by_uuid:
             return self._tools_by_uuid[tool_uuid]
 
-        dynamic_tool = self.app.dynamic_tool_manager.get_tool_by_uuid(tool_uuid)
-        if dynamic_tool:
+        if dynamic_tool := self.app.dynamic_tool_manager.get_tool_by_uuid(tool_uuid):
             return self.load_dynamic_tool(dynamic_tool)
 
         return None
 
-    def panel_views(self) -> List[ToolPanelViewModel]:
+    def panel_views(self) -> list[ToolPanelViewModel]:
         return [v.to_model() for v in self._tool_panel_views.values()]
 
-    def panel_view_dicts(self) -> Dict[str, Dict]:
+    def panel_view_dicts(self) -> dict[str, dict]:
         return {m.id: m.model_dump(mode="json") for m in self.panel_views()}
 
-    def panel_has_tool(self, tool, panel_view_id):
+    def panel_has_tool(self, tool: "Tool", panel_view_id: str) -> bool:
         panel_view_rendered = self._tool_panel_view_rendered[panel_view_id]
         return panel_view_rendered.has_item_recursive(tool)
 
-    def load_dynamic_tool(self, dynamic_tool: "DynamicTool"):
-        if not dynamic_tool.active:
+    def load_dynamic_tool(self, dynamic_tool: "DynamicTool") -> Union["Tool", None]:
+        if not dynamic_tool.active or not dynamic_tool.public:
             return None
 
         tool = self.create_dynamic_tool(dynamic_tool)
+        if dynamic_tool.tool_format == "GalaxyUserTool":
+            # UDTs are resolved per-request via DynamicToolManager; never cache.
+            return tool
         self.register_tool(tool)
+        assert isinstance(dynamic_tool.uuid, UUID)
         self._tools_by_uuid[dynamic_tool.uuid] = tool
         return tool
 
@@ -424,11 +439,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         tool_path,
         panel_dict=None,
         integrated_panel_dict=None,
-        load_panel_dict=True,
+        load_panel_dict: bool = True,
         guid=None,
-        index=None,
-        tool_cache_data_dir=None,
-    ):
+        index: int | None = None,
+    ) -> None:
         with self.app._toolbox_lock:
             item = ensure_tool_conf_item(item)
             item_type = item.type
@@ -445,7 +459,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                     load_panel_dict=load_panel_dict,
                     guid=guid,
                     index=index,
-                    tool_cache_data_dir=tool_cache_data_dir,
                 )
             elif item_type == "workflow":
                 self._load_workflow_tag_set(
@@ -461,7 +474,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                     tool_path=tool_path,
                     load_panel_dict=load_panel_dict,
                     index=index,
-                    tool_cache_data_dir=tool_cache_data_dir,
                 )
             elif item_type == "label":
                 self._load_label_tag_set(
@@ -478,10 +490,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                     tool_path,
                     integrated_panel_dict,
                     load_panel_dict=load_panel_dict,
-                    tool_cache_data_dir=tool_cache_data_dir,
                 )
 
-    def get_shed_config_dict_by_filename(self, filename) -> Optional[DynamicToolConfDict]:
+    def get_shed_config_dict_by_filename(self, filename) -> DynamicToolConfDict | None:
         filename = os.path.abspath(filename)
         dynamic_tool_conf_paths = []
         for shed_config_dict in self._dynamic_tool_confs:
@@ -510,6 +521,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             log.debug(f"Appending to tool panel section: {str(tool_section.name)}")
         elif new_label and self._tool_panel.get_label(new_label):
             tool_section = self._tool_panel.get_label(new_label)
+            assert tool_section  # redundant with the test in the elif, but cannot use := until we drop support for Python 3.7
             tool_panel_section_key = tool_section.id
         elif create_if_needed:
             # Appending a new section to toolbox._tool_panel
@@ -534,7 +546,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         log.debug(f"Loading new tool panel section: {str(tool_section.name)}")
         return tool_section
 
-    def get_section_for_tool(self, tool):
+    def get_section_for_tool(self, tool) -> tuple[str, str] | tuple[None, None]:
         tool_id = tool.id
         return self._tool_panel.get_section_for_tool_id(tool_id)
 
@@ -621,8 +633,8 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         if log_msg and (not hasattr(self.app, "tool_cache") or tool_id in self.app.tool_cache._new_tool_ids):
             log.debug(log_msg)
 
-    def _load_tool_panel_views(self):
-        self._tool_panel_view_rendered = {}
+    def _load_tool_panel_views(self) -> None:
+        self._tool_panel_view_rendered: dict[str, ToolPanelElements] = {}
         registry = ToolBoxRegistryImpl(self)
         for key, view in self._tool_panel_views.items():
             self._tool_panel_view_rendered[key] = view.apply_view(self._integrated_tool_panel, registry)
@@ -705,53 +717,56 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
     @overload
     def get_tool(
         self,
-        tool_id: Optional[str] = None,
-        tool_version: Optional[str] = None,
-        tool_uuid: Optional[Union[UUID, str]] = None,
+        tool_id: str | None = None,
+        tool_version: str | None = None,
+        tool_uuid: UUID | str | None = None,
         get_all_versions: Literal[False] = False,
-        exact: Optional[bool] = False,
+        exact: bool | None = False,
         user: Optional["User"] = None,
     ) -> Optional["Tool"]: ...
 
     @overload
     def get_tool(
         self,
-        tool_id: Optional[str] = None,
-        tool_version: Optional[str] = None,
-        tool_uuid: Optional[Union[UUID, str]] = None,
+        tool_id: str | None = None,
+        tool_version: str | None = None,
+        tool_uuid: UUID | str | None = None,
         get_all_versions: Literal[True] = True,
-        exact: Optional[bool] = False,
+        exact: bool | None = False,
         user: Optional["User"] = None,
-    ) -> List["Tool"]: ...
+    ) -> list["Tool"]: ...
 
     def get_tool(
         self,
-        tool_id: Optional[str] = None,
-        tool_version: Optional[str] = None,
-        tool_uuid: Optional[Union[UUID, str]] = None,
-        get_all_versions: Optional[bool] = False,
-        exact: Optional[bool] = False,
+        tool_id: str | None = None,
+        tool_version: str | None = None,
+        tool_uuid: UUID | str | None = None,
+        get_all_versions: bool | None = False,
+        exact: bool | None = False,
         user: Optional["User"] = None,
-    ) -> Union[Optional["Tool"], List["Tool"]]:
+    ) -> Optional["Tool"] | list["Tool"]:
         """Attempt to locate a tool in the tool box. Note that `exact` only refers to the `tool_id`, not the `tool_version`."""
-        if tool_uuid and user:
-            unprivileged_tool = self.get_unprivileged_tool_or_none(user, tool_uuid=tool_uuid)
-            if unprivileged_tool:
-                return unprivileged_tool
+        if tool_id is None and tool_uuid is None:
+            raise RequestParameterInvalidException("get_tool cannot be called with both tool_id and tool_uuid as None")
+        elif tool_uuid:
+            if user:
+                unprivileged_tool = self.get_unprivileged_tool_or_none(user, tool_uuid=tool_uuid)
+                if unprivileged_tool:
+                    return unprivileged_tool
+            tool_uuid = tool_uuid if isinstance(tool_uuid, UUID) else UUID(tool_uuid)
+            tool_from_uuid = self._get_tool_by_uuid(tool_uuid)
+            if tool_from_uuid is None:
+                raise ObjectNotFound(f"Failed to find a tool with uuid [{tool_uuid}]")
+            return tool_from_uuid
+        assert tool_id
+
         if tool_version:
             tool_version = str(tool_version)
 
         if get_all_versions and exact:
-            raise AssertionError("Cannot specify get_tool with both get_all_versions and exact as True")
-
-        if tool_id is None:
-            if tool_uuid is not None:
-                tool_from_uuid = self._get_tool_by_uuid(tool_uuid)
-                if tool_from_uuid is None:
-                    raise ObjectNotFound(f"Failed to find a tool with uuid [{tool_uuid}]")
-                tool_id = tool_from_uuid.id
-            if tool_id is None:
-                raise AssertionError("get_tool called with tool_id as None")
+            raise RequestParameterInvalidException(
+                "get_tool cannot be called with both get_all_versions and exact as True"
+            )
 
         if "/repos/" in tool_id:  # test if tool came from a toolshed
             tool_id_without_tool_shed = tool_id.split("/repos/")[1]
@@ -799,7 +814,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
 
                 # if we don't have a lineage_map for this tool we need to sort by version,
                 # so that the last tool in rval is the newest tool.
-                rval.sort(key=lambda t: t.version)
+                rval.sort(key=lambda t: t.version_object)
             if rval:
                 if get_all_versions:
                     return rval
@@ -822,9 +837,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
 
     def has_tool(
         self,
-        tool_id: Optional[str],
-        tool_version: Optional[str] = None,
-        tool_uuid: Optional[Union[UUID, str]] = None,
+        tool_id: str | None,
+        tool_version: str | None = None,
+        tool_uuid: UUID | str | None = None,
         exact: bool = False,
         user: Optional["User"] = None,
     ):
@@ -832,10 +847,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             self.get_tool(tool_id, tool_version=tool_version, tool_uuid=tool_uuid, exact=exact, user=user) is not None
         )
 
-    def get_unprivileged_tool(self, user: "User", tool_uuid: Union[UUID, str]) -> Optional["Tool"]:
+    def get_unprivileged_tool(self, user: "User", tool_uuid: UUID | str) -> Optional["Tool"]:
         return None
 
-    def get_unprivileged_tool_or_none(self, user: "User", tool_uuid: Union[UUID, str]) -> Optional["Tool"]:
+    def get_unprivileged_tool_or_none(self, user: "User", tool_uuid: UUID | str) -> Optional["Tool"]:
         return None
 
     def is_missing_shed_tool(self, tool_id: str) -> bool:
@@ -851,8 +866,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
 
     def get_loaded_tools_by_lineage(self, tool_id: str) -> list:
         """Get all loaded tools associated by lineage to the tool whose id is tool_id."""
-        tool_lineage = self._lineage_map.get(tool_id)
-        if tool_lineage:
+        if tool_lineage := self._lineage_map.get(tool_id):
             lineage_tool_versions = tool_lineage.get_versions()
             available_tool_versions = []
             for lineage_tool_version in lineage_tool_versions:
@@ -869,7 +883,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
     def tools(self):
         return self._tools_by_id.copy().items()
 
-    def dynamic_confs(self, include_migrated_tool_conf=False) -> List[DynamicToolConfDict]:
+    def dynamic_confs(self, include_migrated_tool_conf=False) -> list[DynamicToolConfDict]:
         confs = []
         for dynamic_tool_conf_dict in self._dynamic_tool_confs:
             dynamic_tool_conf_filename = dynamic_tool_conf_dict["config_filename"]
@@ -909,11 +923,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         panel_dict,
         integrated_panel_dict,
         tool_path,
-        load_panel_dict,
+        load_panel_dict: bool,
         guid=None,
-        index=None,
-        tool_cache_data_dir=None,
-    ):
+        index: int | None = None,
+    ) -> None:
         try:
             path_template = item.get("file")
             template_kwds = self._path_template_kwds()
@@ -926,16 +939,15 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             can_load_into_panel_dict = True
 
             tool = self.load_tool_from_cache(concrete_path)
-            from_cache = tool
-            if from_cache:
-                if guid and tool.id != guid:
-                    # In rare cases a tool shed tool is loaded into the cache without guid.
-                    # In that case recreating the tool will correct the cached version.
-                    from_cache = False
+            from_cache = tool is not None
+            if tool and guid and tool.id != guid:
+                # In rare cases a tool shed tool is loaded into the cache without guid.
+                # In that case recreating the tool will correct the cached version.
+                from_cache = False
             if guid and not from_cache:  # tool was not in cache and is a tool shed tool
                 tool_shed_repository = self.get_tool_repository_from_xml_item(item.elem, concrete_path)
                 if tool_shed_repository:
-                    if hasattr(tool_shed_repository, "deleted"):
+                    if not isinstance(tool_shed_repository, ToolConfRepository):
                         # The shed tool is in the install database
                         # Only load tools if the repository is not deactivated or uninstalled.
                         can_load_into_panel_dict = not tool_shed_repository.deleted
@@ -944,10 +956,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                         guid=guid,
                         tool_shed_repository=tool_shed_repository,
                         use_cached=False,
-                        tool_cache_data_dir=tool_cache_data_dir,
                     )
             if not tool:  # tool was not in cache and is not a tool shed tool.
-                tool = self.load_tool(concrete_path, use_cached=False, tool_cache_data_dir=tool_cache_data_dir)
+                tool = self.load_tool(concrete_path, use_cached=False)
             if string_as_bool(item.get("hidden", False)):
                 tool.hidden = True
             key = f"tool_{str(tool.id)}"
@@ -978,15 +989,26 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         except Exception:
             log.exception("Error reading tool from path: %s", path)
 
-    def get_tool_repository_from_xml_item(self, elem, path):
-        tool_shed = elem.find("tool_shed").text
-        repository_name = elem.find("repository_name").text
-        repository_owner = elem.find("repository_owner").text
+    def get_tool_repository_from_xml_item(
+        self, elem: "Element", path: str
+    ) -> Union[ToolConfRepository, "ToolShedRepository"]:
+        tool_shed_el = elem.find("tool_shed")
+        assert tool_shed_el is not None
+        tool_shed = tool_shed_el.text
+        assert tool_shed
+        repository_name_el = elem.find("repository_name")
+        assert repository_name_el is not None
+        repository_name = repository_name_el.text
+        assert repository_name
+        repository_owner_el = elem.find("repository_owner")
+        assert repository_owner_el is not None
+        repository_owner = repository_owner_el.text
+        assert repository_owner
         # The definition of `installed_changeset_revision` for a repository is that it has been cloned at <tool_path/toolshed/repos/owner/name/installed_changeset_revision>
         # so if we load a tool it needs to be at a path that contains `installed_changeset_revision`.
         path_to_installed_changeset_revision = os.path.join(tool_shed, "repos", repository_owner, repository_name)
         if path_to_installed_changeset_revision in path:
-            installed_changeset_revision = path[
+            installed_changeset_revision: str | None = path[
                 path.index(path_to_installed_changeset_revision) + len(path_to_installed_changeset_revision) :
             ].split(os.path.sep)[1]
         else:
@@ -994,8 +1016,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             if installed_changeset_revision_elem is None:
                 # Backward compatibility issue - the tag used to be named 'changeset_revision'.
                 installed_changeset_revision_elem = elem.find("changeset_revision")
+                assert installed_changeset_revision_elem is not None
             installed_changeset_revision = installed_changeset_revision_elem.text
-        repository = self._get_tool_shed_repository(
+        repository: ToolConfRepository | ToolShedRepository = self._get_tool_shed_repository(
             tool_shed=tool_shed,
             name=repository_name,
             owner=repository_owner,
@@ -1008,6 +1031,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             )
             log.warning(msg, repository_name, repository_owner)
             # Figure out path to repository on disk given the tool shed info and the path to the tool contained in the repo
+            assert installed_changeset_revision
             repository_path = os.path.join(
                 tool_shed, "repos", repository_owner, repository_name, installed_changeset_revision
             )
@@ -1027,12 +1051,15 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 tsr_cache.add_local_repository(repository)
         return repository
 
-    def _get_tool_shed_repository(self, tool_shed, name, owner, installed_changeset_revision):
+    @abc.abstractmethod
+    def _get_tool_shed_repository(
+        self, tool_shed: str, name: str, owner: str, installed_changeset_revision: str | None
+    ) -> "ToolShedRepository":
         # Abstract class doesn't have a dependency on the database, for full Tool Shed
         # support the actual Galaxy ToolBox implements this method and returns a Tool Shed repository.
-        return None
+        ...
 
-    def __add_tool(self, tool, load_panel_dict, panel_dict):
+    def __add_tool(self, tool: "Tool", load_panel_dict: bool, panel_dict) -> None:
         # Allow for the same tool to be loaded into multiple places in the
         # tool panel.  We have to handle the case where the tool is contained
         # in a repository installed from the tool shed, and the Galaxy
@@ -1046,7 +1073,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         if load_panel_dict:
             self.__add_tool_to_tool_panel(tool, panel_dict)
 
-    def _load_workflow_tag_set(self, item, panel_dict, integrated_panel_dict, load_panel_dict, index=None):
+    def _load_workflow_tag_set(
+        self, item, panel_dict, integrated_panel_dict, load_panel_dict: bool, index: int | None = None
+    ) -> None:
         try:
             # TODO: should id be encoded?
             workflow_id = item.get("id")
@@ -1060,14 +1089,16 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         except Exception:
             log.exception("Error loading workflow: %s", workflow_id)
 
-    def _load_label_tag_set(self, item, panel_dict, integrated_panel_dict, load_panel_dict, index=None):
+    def _load_label_tag_set(
+        self, item, panel_dict, integrated_panel_dict, load_panel_dict: bool, index: int | None = None
+    ) -> None:
         label = ToolSectionLabel(item)
         key = f"label_{label.id}"
         if load_panel_dict:
             panel_dict[key] = label
         integrated_panel_dict.update_or_append(index, key, label)
 
-    def _load_section_tag_set(self, item, tool_path, load_panel_dict, index=None, tool_cache_data_dir=None):
+    def _load_section_tag_set(self, item, tool_path, load_panel_dict: bool, index: int | None = None) -> None:
         key = item.get("id")
         if key in self._tool_panel:
             section = self._tool_panel[key]
@@ -1090,7 +1121,6 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 load_panel_dict=load_panel_dict,
                 guid=sub_item.get("guid"),
                 index=sub_index,
-                tool_cache_data_dir=tool_cache_data_dir,
             )
 
         # Ensure each tool's section is stored
@@ -1105,9 +1135,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         # Always load sections into the integrated_tool_panel.
         self._integrated_tool_panel.update_or_append(index, key, integrated_section)
 
-    def _load_tooldir_tag_set(
-        self, item, elems, tool_path, integrated_elems, load_panel_dict, tool_cache_data_dir=None
-    ):
+    def _load_tooldir_tag_set(self, item, elems, tool_path, integrated_elems, load_panel_dict: bool) -> None:
         directory = os.path.join(tool_path, item.get("dir"))
         recursive = string_as_bool(item.get("recursive", True))
         self.__watch_directory(
@@ -1117,22 +1145,22 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             load_panel_dict,
             recursive,
             force_watch=True,
-            tool_cache_data_dir=tool_cache_data_dir,
         )
 
     def __watch_directory(
         self,
-        directory,
+        directory: "StrPath",
         elems,
         integrated_elems,
-        load_panel_dict,
-        recursive,
-        force_watch=False,
-        tool_cache_data_dir=None,
-    ):
-        def quick_load(tool_file, async_load=True):
+        load_panel_dict: bool,
+        recursive: bool,
+        force_watch: bool = False,
+    ) -> None:
+        def quick_load(tool_file: "StrPath", async_load: bool = True) -> str | None:
+            if not self._looks_like_a_tool(str(tool_file)):
+                return None
             try:
-                tool = self.load_tool(tool_file, tool_cache_data_dir)
+                tool = self.load_tool(tool_file)
                 self.__add_tool(tool, load_panel_dict, elems)
                 # Always load the tool into the integrated_panel_dict, or it will not be included in the integrated_tool_panel.xml file.
                 key = f"tool_{str(tool.id)}"
@@ -1151,7 +1179,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 log.error(f"Failed to load potential tool {tool_file} - {e}")
             except Exception:
                 log.exception("Failed to load potential tool %s.", tool_file)
-                return None
+            return None
 
         tool_loaded = False
         if not os.path.isdir(directory):
@@ -1171,18 +1199,22 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             self._tool_watcher.watch_directory(directory, quick_load)
 
     def load_tool(
-        self, config_file, guid=None, tool_shed_repository=None, use_cached=False, tool_cache_data_dir=None, **kwds
-    ):
+        self,
+        config_file: "StrPath",
+        guid=None,
+        tool_shed_repository=None,
+        use_cached: bool = False,
+        **kwds,
+    ) -> "Tool":
         """Load a single tool from the file named by `config_file` and return an instance of `Tool`."""
         # Parse XML configuration file and get the root element
-        tool = None
+        tool: Tool | None = None
         if use_cached:
             tool = self.load_tool_from_cache(config_file)
         if not tool or guid and guid != tool.guid:
             try:
                 tool = self.create_tool(
                     config_file,
-                    tool_cache_data_dir=tool_cache_data_dir,
                     tool_shed_repository=tool_shed_repository,
                     guid=guid,
                     **kwds,
@@ -1207,13 +1239,13 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             if self._tool_config_watcher:
                 [self._tool_config_watcher.watch_file(macro_path) for macro_path in tool._macro_paths]
 
-    def add_tool_to_cache(self, tool, config_file):
-        tool_cache = getattr(self.app, "tool_cache", None)
+    def add_tool_to_cache(self, tool: "Tool", config_file: "StrPath") -> None:
+        tool_cache: ToolCache | None = getattr(self.app, "tool_cache", None)
         if tool_cache:
-            self.app.tool_cache.cache_tool(config_file, tool)
+            tool_cache.cache_tool(config_file, tool)
 
-    def load_tool_from_cache(self, config_file, recover_tool=False):
-        tool_cache = getattr(self.app, "tool_cache", None)
+    def load_tool_from_cache(self, config_file: "StrPath", recover_tool: bool = False) -> Union["Tool", None]:
+        tool_cache: ToolCache | None = getattr(self.app, "tool_cache", None)
         tool = None
         if tool_cache:
             if recover_tool:
@@ -1234,8 +1266,9 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         self.register_tool(tool)
         return tool
 
-    def register_tool(self, tool):
+    def register_tool(self, tool: "Tool") -> None:
         tool_id = tool.id
+        assert tool_id
         version = tool.version or None
         if tool_id not in self._tool_versions_by_id:
             self._tool_versions_by_id[tool_id] = {version: tool}
@@ -1249,10 +1282,59 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
                 self._tools_by_id[tool_id] = tool
         else:
             self._tools_by_id[tool_id] = tool
-        old_id = tool.old_id
-        if old_id not in self._tools_by_old_id:
-            self._tools_by_old_id[old_id] = []
-        self._tools_by_old_id[old_id].append(tool)
+        # Always drop stale caches: callers re-register on reload (same id, new
+        # object) and may also mutate `tool_tags` / `edam_*` on the existing
+        # tool before re-registering. Invalidating unconditionally keeps the
+        # to_dict + curated-id-set caches consistent with the live tool.
+        self._invalidate_tool_caches(tool_id)
+        if old_id := tool.old_id:
+            if old_id not in self._tools_by_old_id:
+                self._tools_by_old_id[old_id] = []
+            self._tools_by_old_id[old_id].append(tool)
+
+    def _invalidate_tool_caches(self, tool_id: str | None = None) -> None:
+        """Drop cached `to_dict` payloads and curated/EDAM id sets.
+
+        Called whenever a tool is registered, reloaded, or removed so callers don't
+        observe stale `tool_tags` / `edam_*` data through the toolbox payload caches.
+        """
+        if tool_id is None:
+            self._tool_to_dict_cache.clear()
+            self._tool_to_dict_cache_admin.clear()
+        else:
+            self._tool_to_dict_cache.pop(tool_id, None)
+            self._tool_to_dict_cache_admin.pop(tool_id, None)
+        self._curated_tool_tags = None
+        self._tool_edam_operations = None
+        self._tool_edam_topics = None
+
+    def _collect_tool_attribute_set(self, attribute: str) -> frozenset[str]:
+        values: set = set()
+        for _, tool in self.tools():
+            attr_values = getattr(tool, attribute, None) or ()
+            values.update(value for value in attr_values if isinstance(value, str) and value)
+        return frozenset(values)
+
+    @property
+    def curated_tool_tags(self) -> frozenset[str]:
+        """Set of curated tag names known to the loaded tools (lazy, cached)."""
+        if self._curated_tool_tags is None:
+            self._curated_tool_tags = self._collect_tool_attribute_set("tool_tags")
+        return self._curated_tool_tags
+
+    @property
+    def tool_edam_operations(self) -> frozenset[str]:
+        """Set of EDAM operation ids referenced by loaded tools (lazy, cached)."""
+        if self._tool_edam_operations is None:
+            self._tool_edam_operations = self._collect_tool_attribute_set("edam_operations")
+        return self._tool_edam_operations
+
+    @property
+    def tool_edam_topics(self) -> frozenset[str]:
+        """Set of EDAM topic ids referenced by loaded tools (lazy, cached)."""
+        if self._tool_edam_topics is None:
+            self._tool_edam_topics = self._collect_tool_attribute_set("edam_topics")
+        return self._tool_edam_topics
 
     def package_tool(self, trans, tool_id):
         """
@@ -1268,17 +1350,18 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             tool = self._tools_by_id[tool_id]
             return tool.to_archive()
 
-    def reload_tool_by_id(self, tool_id: str) -> Tuple[Union[str, Dict[str, str]], str]:
+    def reload_tool_by_id(self, tool_id: str) -> tuple[str | dict[str, str], str]:
         """
         Attempt to reload the tool identified by 'tool_id', if successful
         replace the old tool.
         """
-        message: Union[str, Dict[str, str]]
+        message: str | dict[str, str]
         if tool_id not in self._tools_by_id:
             message = f"No tool with id '{escape(tool_id)}'."
             status = "error"
         else:
             old_tool = self._tools_by_id[tool_id]
+            assert old_tool.config_file
             new_tool = self.load_tool(old_tool.config_file, use_cached=False)
             # The tool may have been installed from a tool shed, so set the tool shed attributes.
             # Since the tool version may have changed, we don't override it here.
@@ -1294,6 +1377,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
             # (Re-)Register the reloaded tool, this will handle
             #  _tools_by_id and _tool_versions_by_id
             self.register_tool(new_tool)
+            assert old_tool.id
             message = {"name": old_tool.name, "id": old_tool.id, "version": old_tool.version}
             status = "done"
         return message, status
@@ -1312,8 +1396,10 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         else:
             tool = self._tools_by_id[tool_id]
             del self._tools_by_id[tool_id]
-            self._tools_by_old_id[tool.old_id].remove(tool)
-            tool_cache = getattr(self.app, "tool_cache", None)
+            self._invalidate_tool_caches(tool_id)
+            if tool.old_id:
+                self._tools_by_old_id[tool.old_id].remove(tool)
+            tool_cache: ToolCache | None = getattr(self.app, "tool_cache", None)
             if tool_cache:
                 tool_cache.expire_tool(tool_id)
             if remove_from_panel:
@@ -1364,33 +1450,52 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         filter_method = self._build_filter_method(trans)
         tool_panel_view = self._tool_panel_view_rendered[view]
         for _, item_type, elt in tool_panel_view.panel_items_iter():
+            # The My Tools view's Favorites section is intentionally empty
+            # server-side — its tools are rendered client-side from the user's
+            # preferences. `_filter_for_panel` prunes empty sections, so yield
+            # this one verbatim and let the client populate it.
+            if (
+                view == MY_TOOLS_PANEL_VIEW_ID
+                and item_type == panel_item_types.SECTION
+                and getattr(elt, "id", None) == MY_TOOLS_PANEL_SECTION_ID
+            ):
+                yield elt
+                continue
             elt = filter_method(elt, item_type)
             if elt:
                 yield elt
 
-    def get_tool_to_dict(self, trans, tool, tool_help=False):
+    def get_tool_to_dict(self, trans, tool: "Tool", tool_help: bool = False) -> dict[str, Any]:
         """Return tool's to_dict.
         Use cache if present, store to cache otherwise.
         Note: The cached tool's to_dict is specific to the calls from toolbox.
         """
         to_dict = None
+        assert tool.id
         if not trans.user_is_admin:
             if not tool_help:
-                to_dict = self._tool_to_dict_cache.get(tool.id, None)
+                to_dict = self._tool_to_dict_cache.get(tool.id)
             if not to_dict:
                 to_dict = tool.to_dict(trans, link_details=True, tool_help=tool_help)
                 if not tool_help:
                     self._tool_to_dict_cache[tool.id] = to_dict
         else:
             if not tool_help:
-                to_dict = self._tool_to_dict_cache_admin.get(tool.id, None)
+                to_dict = self._tool_to_dict_cache_admin.get(tool.id)
             if not to_dict:
                 to_dict = tool.to_dict(trans, link_details=True, tool_help=tool_help)
                 if not tool_help:
                     self._tool_to_dict_cache_admin[tool.id] = to_dict
         return to_dict
 
-    def to_dict(self, trans, in_panel=True, tool_help=False, view=None, **kwds):
+    def to_dict(
+        self,
+        trans,
+        in_panel: bool = True,
+        tool_help: bool = False,
+        view: str | None = None,
+        **kwds,
+    ) -> list[dict[str, Any]]:
         """
         Create a dictionary representation of the toolbox.
         Uses primitive cache for toolbox-specific tool 'to_dict's.
@@ -1422,7 +1527,7 @@ class AbstractToolBox(ManagesIntegratedToolPanelMixin):
         """
         if view == "default_panel_view":
             view = self._default_panel_view(trans)
-        view_contents: Dict[str, Dict] = {}
+        view_contents: dict[str, dict] = {}
         panel_elts = self.tool_panel_contents(trans, view=view, **kwds)
         for elt in panel_elts:
             # Only use cache for objects that are Tools.

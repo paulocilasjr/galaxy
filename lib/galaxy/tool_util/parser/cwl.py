@@ -12,6 +12,7 @@ from galaxy.tool_util.cwl.parser import tool_proxy
 from galaxy.tool_util.deps import requirements
 from galaxy.tool_util_models.tool_source import HelpContent
 from .interface import (
+    INPUT_CLASS_T,
     PageSource,
     PagesSource,
     ToolSource,
@@ -41,7 +42,7 @@ class CwlToolSource(ToolSource):
 
     def __init__(
         self,
-        tool_file: Optional[str] = None,
+        tool_file: str | None = None,
         strict_cwl_validation: bool = True,
         tool_proxy: Optional["ToolProxy"] = None,
     ):
@@ -94,8 +95,7 @@ class CwlToolSource(ToolSource):
         return []
 
     def parse_help(self):
-        doc = self.tool_proxy.doc()
-        if doc:
+        if doc := self.tool_proxy.doc():
             return HelpContent(format="plain_text", content=doc)
         else:
             return None
@@ -128,7 +128,7 @@ class CwlToolSource(ToolSource):
     def parse_description(self):
         return self.tool_proxy.description()
 
-    def parse_icon(self) -> Optional[str]:
+    def parse_icon(self) -> str | None:
         return None  # Not implemented
 
     def parse_interactivetool(self):
@@ -138,7 +138,7 @@ class CwlToolSource(ToolSource):
         page_source = CwlPageSource(self.tool_proxy)
         return PagesSource([page_source])
 
-    def parse_outputs(self, app: Optional[ToolOutputActionApp]):
+    def parse_outputs(self, app: ToolOutputActionApp | None):
         output_instances = self.tool_proxy.output_instances()
         outputs = {}
         output_defs = []
@@ -149,7 +149,7 @@ class CwlToolSource(ToolSource):
             outputs[output_def.name] = output_def
         return outputs, {}
 
-    def _parse_output(self, app: Optional[ToolOutputActionApp], output_instance: "OutputInstance"):
+    def _parse_output(self, app: ToolOutputActionApp | None, output_instance: "OutputInstance"):
         name = output_instance.name
         # TODO: handle filters, actions, change_format
         output = ToolOutput(name)
@@ -170,19 +170,20 @@ class CwlToolSource(ToolSource):
             output.actions = ToolOutputActionGroup(app, None)
         return output
 
-    def parse_requirements_and_containers(self):
+    def parse_requirements(self):
         containers = []
-        docker_identifier = self.tool_proxy.docker_identifier()
-        if docker_identifier:
+        if docker_identifier := self.tool_proxy.docker_identifier():
             containers.append({"type": "docker", "identifier": docker_identifier})
 
         software_requirements = self.tool_proxy.software_requirements()
         resource_requirements = self.tool_proxy.resource_requirements()
+        credentials = self.tool_proxy.credentials_requirements()
         return requirements.parse_requirements_from_lists(
             software_requirements=[{"name": r[0], "version": r[1], "type": "package"} for r in software_requirements],
             containers=containers,
             resource_requirements=resource_requirements,
             javascript_requirements=[],  # TODO, implement in tool proxy?
+            credentials=credentials,
         )
 
     def parse_profile(self):
@@ -205,6 +206,10 @@ class CwlInputSource(YamlInputSource):
     def __init__(self, as_dict, as_field):
         super().__init__(as_dict)
         self._field = as_field
+
+    @property
+    def input_class(self) -> INPUT_CLASS_T:
+        return "cwl"
 
     @property
     def field(self):

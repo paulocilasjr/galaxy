@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { faExclamation, faLock, faShareAlt, faUserLock } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { BBadge, BTab, BTabs } from "bootstrap-vue";
+import { BBadge } from "bootstrap-vue";
 import { ref } from "vue";
 
+import { useHistoryBreadCrumbsToForProps } from "@/composables/historyBreadcrumbs";
 import { useHistoryStore } from "@/stores/historyStore";
 import localize from "@/utils/localization";
 
-import Heading from "../Common/Heading.vue";
 import PortletSection from "../Common/PortletSection.vue";
 import SharingPage from "../Sharing/SharingPage.vue";
 import HistoryDatasetPermissions from "./HistoryDatasetPermissions.vue";
 import HistoryMakePrivate from "./HistoryMakePrivate.vue";
+import GTab from "@/components/BaseComponents/GTab.vue";
+import GTabs from "@/components/BaseComponents/GTabs.vue";
+import BreadcrumbHeading from "@/components/Common/BreadcrumbHeading.vue";
 
 const props = defineProps<{
     historyId: string;
@@ -24,6 +27,8 @@ const historyPrivacyChanged = ref(false);
 
 /** Once the history is made private, this boolean is used to notify the user if sharing status has also changed or not. */
 const sharingStatusChanged = ref(false);
+
+const { breadcrumbItems } = useHistoryBreadCrumbsToForProps(props, "Share & Manage Access");
 
 function historyMadePrivate(hasSharingStatusChanged: boolean) {
     sharingStatusChanged.value = hasSharingStatusChanged;
@@ -38,19 +43,16 @@ function openSharingTab() {
 
 <template>
     <div aria-labelledby="history-sharing-heading">
-        <Heading id="history-sharing-heading" h1 separator inline truncate size="lg">
-            {{ localize("Manage History") }}
-            "{{ historyStore.getHistoryNameById(props.historyId) }}"
-        </Heading>
+        <BreadcrumbHeading :items="breadcrumbItems" />
 
-        <BTabs class="mt-3">
-            <BTab :lazy="historyPrivacyChanged" @click="openSharingTab">
+        <GTabs class="mt-3">
+            <GTab id="history-sharing-tab" :lazy="historyPrivacyChanged" @click="openSharingTab">
                 <template v-slot:title>
                     <FontAwesomeIcon :icon="faShareAlt" class="mr-1" />
                     {{ localize("Share or Publish") }}
                     <BBadge
                         v-if="sharingStatusChanged"
-                        v-b-tooltip.hover.noninteractive
+                        v-g-tooltip.hover
                         class="ml-1"
                         :title="localize('Sharing status for this history has changed.')"
                         variant="primary">
@@ -66,25 +68,25 @@ function openSharingTab() {
 
                     <SharingPage :id="props.historyId" plural-name="histories" model-class="History" no-heading />
                 </PortletSection>
-            </BTab>
+            </GTab>
 
-            <BTab :lazy="historyPrivacyChanged" @click="historyPrivacyChanged = false">
+            <GTab id="history-permissions-tab" :lazy="historyPrivacyChanged" @click="historyPrivacyChanged = false">
                 <template v-slot:title>
                     <FontAwesomeIcon :icon="faUserLock" class="mr-1" />
                     {{ localize("Set Permissions") }}
                 </template>
 
                 <HistoryDatasetPermissions :history-id="props.historyId" no-redirect />
-            </BTab>
+            </GTab>
 
-            <BTab>
+            <GTab id="history-make-private-tab">
                 <template v-slot:title>
                     <FontAwesomeIcon :icon="faLock" class="mr-1" />
                     {{ localize("Make Private") }}
                 </template>
 
                 <HistoryMakePrivate :history-id="props.historyId" @history-made-private="historyMadePrivate" />
-            </BTab>
-        </BTabs>
+            </GTab>
+        </GTabs>
     </div>
 </template>

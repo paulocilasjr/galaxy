@@ -1,12 +1,6 @@
 import os
 import tempfile
 from collections import namedtuple
-from typing import (
-    Dict,
-    List,
-    Optional,
-    Tuple,
-)
 
 from galaxy import exceptions
 from galaxy.exceptions import (
@@ -26,6 +20,7 @@ from galaxy.tool_util.parser import (
     get_tool_source,
     ToolSource,
 )
+from galaxy.tool_util.version_updates import is_workflow_safe_version
 from galaxy.tools.stock import stock_tool_sources
 from galaxy.util import relpath
 from tool_shed.context import (
@@ -39,7 +34,7 @@ from tool_shed_client.schema import ShedParsedTool
 from .repositories import get_repository_revision_metadata_model
 from .trs import trs_tool_id_to_repository_metadata
 
-STOCK_TOOL_SOURCES: Optional[Dict[str, Dict[str, ToolSource]]] = None
+STOCK_TOOL_SOURCES: dict[str, dict[str, ToolSource]] | None = None
 
 
 def search(trans: SessionRequestContext, q: str, page: int = 1, page_size: int = 10) -> dict:
@@ -83,7 +78,7 @@ def search(trans: SessionRequestContext, q: str, page: int = 1, page_size: int =
 
 def get_repository_metadata_tool_dict(
     trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str
-) -> Tuple[RepositoryMetadata, RepositoryMetadataToolDict]:
+) -> tuple[RepositoryMetadata, RepositoryMetadataToolDict]:
     if trs_tool_id.count("~") < 2:
         RequestParameterInvalidException(f"Invalid TRS tool id ({trs_tool_id})")
 
@@ -93,7 +88,7 @@ def get_repository_metadata_tool_dict(
         raise ObjectNotFound()
     tool_version_repository_metadata: RepositoryMetadata = metadata_by_version[tool_version]
     raw_metadata = tool_version_repository_metadata.metadata
-    tool_dicts: List[RepositoryMetadataToolDict] = raw_metadata.get("tools", [])
+    tool_dicts: list[RepositoryMetadataToolDict] = raw_metadata.get("tools", [])
     for tool_dict in tool_dicts:
         if tool_dict["id"] != tool_id or tool_dict["version"] != tool_version:
             continue
@@ -102,7 +97,7 @@ def get_repository_metadata_tool_dict(
 
 
 def parsed_tool_model_cached_for(
-    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: Optional[str] = None
+    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: str | None = None
 ) -> ShedParsedTool:
     model_cache = trans.app.model_cache
     parsed_tool = model_cache.get_cache_entry_for(ShedParsedTool, trs_tool_id, tool_version)
@@ -114,7 +109,7 @@ def parsed_tool_model_cached_for(
 
 
 def parsed_tool_model_for(
-    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: Optional[str] = None
+    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: str | None = None
 ) -> ShedParsedTool:
     tool_source, repository_metadata = tool_source_for(
         trans, trs_tool_id, tool_version, repository_clone_url=repository_clone_url
@@ -129,8 +124,8 @@ def parsed_tool_model_for(
 
 
 def tool_source_for(
-    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: Optional[str] = None
-) -> Tuple[ToolSource, Optional[RepositoryMetadata]]:
+    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: str | None = None
+) -> tuple[ToolSource, RepositoryMetadata | None]:
     if "~" in trs_tool_id:
         return _shed_tool_source_for(trans, trs_tool_id, tool_version, repository_clone_url)
     else:
@@ -141,8 +136,8 @@ def tool_source_for(
 
 
 def _shed_tool_source_for(
-    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: Optional[str] = None
-) -> Tuple[ToolSource, RepositoryMetadata]:
+    trans: ProvidesRepositoriesContext, trs_tool_id: str, tool_version: str, repository_clone_url: str | None = None
+) -> tuple[ToolSource, RepositoryMetadata]:
     rval = get_repository_metadata_tool_dict(trans, trs_tool_id, tool_version)
     repository_metadata, tool_version_metadata = rval
     tool_config = tool_version_metadata["tool_config"]
@@ -173,13 +168,19 @@ def _shed_tool_source_for(
         remove_dir(work_dir)
 
 
-def _stock_tool_source_for(tool_id: str, tool_version: str) -> Optional[ToolSource]:
+def _stock_tool_source_for(tool_id: str, tool_version: str) -> ToolSource | None:
     _init_stock_tool_sources()
     assert STOCK_TOOL_SOURCES
     tool_version_sources = STOCK_TOOL_SOURCES.get(tool_id)
     if tool_version_sources is None:
         return None
-    return tool_version_sources.get(tool_version)
+    tool_source = tool_version_sources.get(tool_version)
+    if tool_source is not None:
+        return tool_source
+    safe_version = is_workflow_safe_version(tool_id, tool_version)
+    if safe_version is not None:
+        return tool_version_sources.get(safe_version)
+    return None
 
 
 def _init_stock_tool_sources() -> None:

@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
+import { reactive, type Ref, ref } from "vue";
 
 import type { WorkflowSummary } from "@/api/workflows";
+import { updateWorkflow } from "@/components/Workflow/workflows.services";
 
 import type { SelectedWorkflow } from "./types";
 
 import WorkflowCard from "./WorkflowCard.vue";
-import WorkflowRename from "./WorkflowRename.vue";
 import GModal from "@/components/BaseComponents/GModal.vue";
+import WorkflowRename from "@/components/Common/RenameModal.vue";
 import WorkflowPublished from "@/components/Workflow/Published/WorkflowPublished.vue";
 import WorkflowPublishedButtons from "@/components/Workflow/Published/WorkflowPublishedButtons.vue";
 
@@ -20,6 +21,9 @@ interface Props {
     editorView?: boolean;
     currentWorkflowId?: string;
     selectedWorkflowIds?: SelectedWorkflow[];
+    itemRefs?: Record<string, Ref<InstanceType<typeof WorkflowCard> | null>>;
+    rangeSelectAnchor?: WorkflowSummary;
+    clickable?: boolean;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -30,6 +34,8 @@ const props = withDefaults(defineProps<Props>(), {
     editorView: false,
     currentWorkflowId: "",
     selectedWorkflowIds: () => [],
+    itemRefs: () => ({}),
+    rangeSelectAnchor: undefined,
 });
 
 const emit = defineEmits<{
@@ -39,6 +45,8 @@ const emit = defineEmits<{
     (e: "updateFilter", key: string, value: any): void;
     (e: "insertWorkflow", id: string, name: string): void;
     (e: "insertWorkflowSteps", id: string, stepCount: number): void;
+    (e: "on-key-down", workflow: WorkflowSummary, event: KeyboardEvent): void;
+    (e: "on-workflow-card-click", workflow: WorkflowSummary, event: Event): void;
 }>();
 
 const modalOptions = reactive({
@@ -83,10 +91,12 @@ const workflowPublished = ref<InstanceType<typeof WorkflowPublished>>();
 </script>
 
 <template>
-    <div class="workflow-card-list d-flex flex-wrap overflow-auto">
+    <div class="workflow-card-list d-flex flex-wrap overflow-auto pt-1">
         <WorkflowCard
             v-for="workflow in workflows"
+            :ref="props.itemRefs[workflow.id]"
             :key="workflow.id"
+            tabindex="0"
             :workflow="workflow"
             :selectable="!publishedView && !editorView"
             :selected="props.selectedWorkflowIds.some((w) => w.id === workflow.id)"
@@ -96,6 +106,9 @@ const workflowPublished = ref<InstanceType<typeof WorkflowPublished>>();
             :published-view="props.publishedView"
             :editor-view="props.editorView"
             :current="workflow.id === props.currentWorkflowId"
+            :clickable="props.clickable"
+            :highlighted="props.rangeSelectAnchor?.id === workflow.id"
+            class="workflow-card-in-list"
             @select="(...args) => emit('select', ...args)"
             @tagClick="(...args) => emit('tagClick', ...args)"
             @refreshList="(...args) => emit('refreshList', ...args)"
@@ -103,12 +116,15 @@ const workflowPublished = ref<InstanceType<typeof WorkflowPublished>>();
             @rename="onRename"
             @preview="onPreview"
             @insert="onInsert(workflow)"
-            @insertSteps="onInsertSteps(workflow)" />
+            @insertSteps="onInsertSteps(workflow)"
+            @on-key-down="(...args) => emit('on-key-down', ...args)"
+            @on-workflow-card-click="(...args) => emit('on-workflow-card-click', ...args)" />
 
         <WorkflowRename
-            :id="modalOptions.rename.id"
-            :show="showRename"
+            v-if="showRename"
+            item-type="workflow"
             :name="modalOptions.rename.name"
+            :rename-action="(newName) => updateWorkflow(modalOptions.rename.id, { name: newName })"
             @close="onRenameClose" />
 
         <GModal
@@ -148,7 +164,8 @@ const workflowPublished = ref<InstanceType<typeof WorkflowPublished>>();
 </style>
 
 <style scoped lang="scss">
-@import "_breakpoints.scss";
+@import "@/style/scss/theme/blue.scss";
+@import "@/style/scss/_breakpoints.scss";
 
 .workflow-card-list {
     container: cards-list / inline-size;

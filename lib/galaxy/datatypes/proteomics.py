@@ -6,14 +6,13 @@ import logging
 import re
 from typing import (
     IO,
-    List,
-    Optional,
 )
 
 from galaxy.datatypes import data
 from galaxy.datatypes.binary import Binary
 from galaxy.datatypes.data import Text
 from galaxy.datatypes.protocols import (
+    DatasetHasHidProtocol,
     DatasetProtocol,
     HasExtraFilesAndMetadata,
 )
@@ -66,7 +65,7 @@ class Wiff(Binary):
                 opt_text = " (optional)"
             if composite_file.get("description"):
                 rval.append(
-                    f"<li><a href=\"{fn}\" type=\"text/plain\">{fn} ({composite_file.get('description')})</a>{opt_text}</li>"
+                    f'<li><a href="{fn}" type="text/plain">{fn} ({composite_file.get("description")})</a>{opt_text}</li>'
                 )
             else:
                 rval.append(f'<li><a href="{fn}" type="text/plain">{fn}</a>{opt_text}</li>')
@@ -108,7 +107,7 @@ class Wiff2(Binary):
                 opt_text = " (optional)"
             if composite_file.get("description"):
                 rval.append(
-                    f"<li><a href=\"{fn}\" type=\"text/plain\">{fn} ({composite_file.get('description')})</a>{opt_text}</li>"
+                    f'<li><a href="{fn}" type="text/plain">{fn} ({composite_file.get("description")})</a>{opt_text}</li>'
                 )
             else:
                 rval.append(f'<li><a href="{fn}" type="text/plain">{fn}</a>{opt_text}</li>')
@@ -119,7 +118,7 @@ class Wiff2(Binary):
 @build_sniff_from_prefix
 class MzTab(Text):
     """
-    exchange format for proteomics and metabolomics results
+    exchange format for proteomics results
 
     >>> from galaxy.datatypes.sniff import get_test_fname
     >>> fname = get_test_fname('test.mztab')
@@ -178,7 +177,8 @@ class MzTab(Text):
 
 class MzTab2(MzTab):
     """
-    exchange format for proteomics and metabolomics results
+    This is version 2.x.x-M of mzTab (mzTab-M) a lightweight, tab-delimited file format for reporting mass spectrometry-based metabolomics results
+    https://github.com/HUPO-PSI/mzTab-M
 
     >>> from galaxy.datatypes.sniff import get_test_fname
     >>> fname = get_test_fname('test.mztab2')
@@ -189,19 +189,36 @@ class MzTab2(MzTab):
     False
     """
 
+    edam_data = "data_4058"
     file_ext = "mztab2"
+    # section names (except MTD)
     _sections = ["SMH", "SML", "SFH", "SMF", "SEH", "SME", "COM"]
-    _version_re = r"(2)(\.[0-9])?(\.[0-9])?-M$"
+    _version_re = r"(2)(\.[0-9]+)?(\.[0-9]+)?-M$"
+    # mandatory metadata fields and list of allowed entries (in lower case)
+    # (or None if everything is allowed)
     _man_mtd = {"mzTab-ID": None}
 
     def __init__(self, **kwd):
         super().__init__(**kwd)
 
+    def display_data(
+        self,
+        trans,
+        dataset: DatasetHasHidProtocol,
+        preview: bool = False,
+        filename: str | None = None,
+        to_ext: str | None = None,
+        **kwd,
+    ):
+        if to_ext == self.file_ext:
+            to_ext = "mztab"
+        return super().display_data(trans, dataset, preview=preview, filename=filename, to_ext=to_ext, **kwd)
+
     def set_peek(self, dataset: DatasetProtocol, **kwd) -> None:
         """Set the peek and blurb text"""
         if not dataset.dataset.purged:
             dataset.peek = data.get_file_peek(dataset.get_file_name())
-            dataset.blurb = "mzTab2 Format"
+            dataset.blurb = "mzTab-M Format"
         else:
             dataset.peek = "file does not exist"
             dataset.blurb = "file purged from disk"
@@ -436,7 +453,7 @@ class Dta(TabularData):
 
     def set_meta(self, dataset: DatasetProtocol, overwrite: bool = True, **kwd) -> None:
         column_types = []
-        data_row: List = []
+        data_row: list = []
         data_lines = 0
         if dataset.has_data():
             with open(dataset.get_file_name()) as dtafile:
@@ -482,7 +499,7 @@ class Dta2d(TabularData):
     file_ext = "dta2d"
     comment_lines = 0
 
-    def _parse_header(self, line: List) -> Optional[List]:
+    def _parse_header(self, line: list) -> list | None:
         if len(line) != 3 or len(line[0]) < 3 or not line[0].startswith("#"):
             return None
         line[0] = line[0].lstrip("#")
@@ -491,14 +508,14 @@ class Dta2d(TabularData):
             return None
         return line
 
-    def _parse_delimiter(self, line: str) -> Optional[str]:
+    def _parse_delimiter(self, line: str) -> str | None:
         if len(line.split(" ")) == 3:
             return " "
         elif len(line.split("\t")) == 3:
             return "\t"
         return None
 
-    def _parse_dataline(self, line: List) -> bool:
+    def _parse_dataline(self, line: list) -> bool:
         try:
             line = [float(_) for _ in line]
         except ValueError:
@@ -584,7 +601,7 @@ class Edta(TabularData):
     file_ext = "edta"
     comment_lines = 0
 
-    def _parse_delimiter(self, line: str) -> Optional[str]:
+    def _parse_delimiter(self, line: str) -> str | None:
         if len(line.split(" ")) >= 3:
             return " "
         elif len(line.split("\t")) >= 3:
@@ -593,7 +610,7 @@ class Edta(TabularData):
             return "\t"
         return None
 
-    def _parse_type(self, line: List) -> Optional[int]:
+    def _parse_type(self, line: list) -> int | None:
         """
         parse the type from the header line
         types 1-3 as in the class docs, 0: type 1 wo/wrong header
@@ -613,7 +630,7 @@ class Edta(TabularData):
         else:
             return 3
 
-    def _parse_dataline(self, line: List, tpe: Optional[int]) -> bool:
+    def _parse_dataline(self, line: list, tpe: int | None) -> bool:
         if tpe == 2 or tpe == 3:
             idx = 4
         else:
@@ -626,7 +643,7 @@ class Edta(TabularData):
             return False
         return True
 
-    def _clean_header(self, line: List) -> List:
+    def _clean_header(self, line: list) -> list:
         for idx, el in enumerate(line):
             el = el.lower()
             if el.startswith("rt"):
@@ -1037,7 +1054,7 @@ class SPLib(Msp):
                 opt_text = " (optional)"
             if composite_file.get("description"):
                 rval.append(
-                    f"<li><a href=\"{fn}\" type=\"text/plain\">{fn} ({composite_file.get('description')})</a>{opt_text}</li>"
+                    f'<li><a href="{fn}" type="text/plain">{fn} ({composite_file.get("description")})</a>{opt_text}</li>'
                 )
             else:
                 rval.append(f'<li><a href="{fn}" type="text/plain">{fn}</a>{opt_text}</li>')
@@ -1124,7 +1141,7 @@ class ImzML(Binary):
             opt_text = ""
             if composite_file.get("description"):
                 rval.append(
-                    f"<li><a href=\"{fn}\" type=\"text/plain\">{fn} ({composite_file.get('description')})</a>{opt_text}</li>"
+                    f'<li><a href="{fn}" type="text/plain">{fn} ({composite_file.get("description")})</a>{opt_text}</li>'
                 )
             else:
                 rval.append(f'<li><a href="{fn}" type="text/plain">{fn}</a>{opt_text}</li>')

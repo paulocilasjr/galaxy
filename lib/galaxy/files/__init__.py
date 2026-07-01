@@ -1,21 +1,17 @@
 import logging
 import os
 from collections import defaultdict
+from collections.abc import Callable
+from datetime import datetime
 from typing import (
     Any,
-    Callable,
-    Dict,
-    List,
     NamedTuple,
-    Optional,
     Protocol,
-    Set,
 )
 
 from galaxy import exceptions
 from galaxy.files.sources import (
     BaseFilesSource,
-    FilesSourceProperties,
     PluginKind,
 )
 from galaxy.util.dictifiable import Dictifiable
@@ -48,7 +44,7 @@ class NoMatchingFileSource(Exception):
 
 
 class UserDefinedFileSources(Protocol):
-    """Entry-point for Galaxy to inject user-defined object stores.
+    """Entry-point for Galaxy to inject user-defined file sources.
 
     Supplied object of this class is used to write out concrete
     description of file sources when serializing all file sources
@@ -58,46 +54,46 @@ class UserDefinedFileSources(Protocol):
     def validate_uri_root(self, uri: str, user_context: "FileSourcesUserContext") -> None:
         pass
 
-    def find_best_match(self, url: str) -> Optional[FileSourceScore]:
+    def find_best_match(self, url: str) -> FileSourceScore | None:
         pass
 
     def user_file_sources_to_dicts(
         self,
         for_serialization: bool,
         user_context: "FileSourcesUserContext",
-        browsable_only: Optional[bool] = False,
-        include_kind: Optional[Set[PluginKind]] = None,
-        exclude_kind: Optional[Set[PluginKind]] = None,
-    ) -> List[FilesSourceProperties]:
+        browsable_only: bool | None = False,
+        include_kind: set[PluginKind] | None = None,
+        exclude_kind: set[PluginKind] | None = None,
+    ) -> list[dict[str, Any]]:
         """Write out user file sources as list of config dictionaries."""
         # config_dicts: List[FilesSourceProperties] = []
         # for file_source in self.user_file_sources():
         #     as_dict = file_source.to_dict(for_serialization=for_serialization, user_context=user_context)
         #     config_dicts.append(as_dict)
         # return config_dicts
+        return []
 
 
 class NullUserDefinedFileSources(UserDefinedFileSources):
-
     def validate_uri_root(self, uri: str, user_context: "FileSourcesUserContext") -> None:
         return None
 
-    def find_best_match(self, url: str) -> Optional[FileSourceScore]:
+    def find_best_match(self, url: str) -> FileSourceScore | None:
         return None
 
     def user_file_sources_to_dicts(
         self,
         for_serialization: bool,
         user_context: "FileSourcesUserContext",
-        browsable_only: Optional[bool] = False,
-        include_kind: Optional[Set[PluginKind]] = None,
-        exclude_kind: Optional[Set[PluginKind]] = None,
-    ) -> List[FilesSourceProperties]:
+        browsable_only: bool | None = False,
+        include_kind: set[PluginKind] | None = None,
+        exclude_kind: set[PluginKind] | None = None,
+    ) -> list[dict[str, Any]]:
         return []
 
 
 def _ensure_user_defined_file_sources(
-    user_defined_file_sources: Optional[UserDefinedFileSources] = None,
+    user_defined_file_sources: UserDefinedFileSources | None = None,
 ) -> UserDefinedFileSources:
     if user_defined_file_sources is not None:
         return user_defined_file_sources
@@ -106,10 +102,10 @@ def _ensure_user_defined_file_sources(
 
 
 class ConfiguredFileSourcesConf:
-    conf_dict: Optional[PluginConfigsT]
-    conf_file: Optional[str]
+    conf_dict: PluginConfigsT | None
+    conf_file: str | None
 
-    def __init__(self, conf_dict: Optional[PluginConfigsT] = None, conf_file: Optional[str] = None):
+    def __init__(self, conf_dict: PluginConfigsT | None = None, conf_file: str | None = None):
         self.conf_dict = conf_dict
         self.conf_file = conf_file
 
@@ -126,22 +122,22 @@ class ConfiguredFileSourcesConf:
 class ConfiguredFileSources:
     """Load plugins and resolve Galaxy URIs to FileSource objects."""
 
-    _file_sources: List[BaseFilesSource]
+    _file_sources: list[BaseFilesSource]
     _plugin_loader: FileSourcePluginLoader
     _user_defined_file_sources: UserDefinedFileSources
 
     def __init__(
         self,
         file_sources_config: FileSourcePluginsConfig,
-        configured_file_source_conf: Optional[ConfiguredFileSourcesConf] = None,
+        configured_file_source_conf: ConfiguredFileSourcesConf | None = None,
         load_stock_plugins: bool = False,
-        plugin_loader: Optional[FileSourcePluginLoader] = None,
-        user_defined_file_sources: Optional[UserDefinedFileSources] = None,
+        plugin_loader: FileSourcePluginLoader | None = None,
+        user_defined_file_sources: UserDefinedFileSources | None = None,
     ):
         self._file_sources_config = file_sources_config
         self._plugin_loader = plugin_loader or FileSourcePluginLoader()
         self._user_defined_file_sources = _ensure_user_defined_file_sources(user_defined_file_sources)
-        file_sources: List[BaseFilesSource] = []
+        file_sources: list[BaseFilesSource] = []
         if configured_file_source_conf is None:
             configured_file_source_conf = ConfiguredFileSourcesConf(conf_dict=[])
         if configured_file_source_conf.conf_file is not None:
@@ -159,7 +155,7 @@ class ConfiguredFileSources:
                 for file_source in file_sources:
                     if file_source.plugin_type == plugin_type:
                         return
-                stock_file_source_conf_dict.append({"type": plugin_type})
+                stock_file_source_conf_dict.append({"type": plugin_type, "id": f"stock_{plugin_type}"})
 
             _ensure_loaded("http")
             _ensure_loaded("base64")
@@ -190,7 +186,7 @@ class ConfiguredFileSources:
     def _parse_plugin_source(self, plugin_source: PluginConfigSource):
         return self._plugin_loader.load_plugins(plugin_source, self._file_sources_config)
 
-    def find_best_match(self, url: str) -> Optional[BaseFilesSource]:
+    def find_best_match(self, url: str) -> BaseFilesSource | None:
         """Returns the best matching file source for handling a particular url. Each filesource scores its own
         ability to match a particular url, and the highest scorer with a score > 0 is selected."""
         scores = [FileSourceScore(file_source, file_source.score_url_match(url)) for file_source in self._file_sources]
@@ -202,6 +198,7 @@ class ConfiguredFileSources:
 
     def get_file_source_path(self, uri):
         """Parse uri into a FileSource object and a path relative to its base."""
+        uri = uri.strip()
         if "://" not in uri:
             raise exceptions.RequestParameterInvalidException(f"Invalid uri [{uri}]")
         file_source = self.find_best_match(uri)
@@ -257,11 +254,11 @@ class ConfiguredFileSources:
         self,
         for_serialization: bool = False,
         user_context: "OptionalUserContext" = None,
-        browsable_only: Optional[bool] = False,
-        include_kind: Optional[Set[PluginKind]] = None,
-        exclude_kind: Optional[Set[PluginKind]] = None,
-    ) -> List[FilesSourceProperties]:
-        rval: List[FilesSourceProperties] = []
+        browsable_only: bool | None = False,
+        include_kind: set[PluginKind] | None = None,
+        exclude_kind: set[PluginKind] | None = None,
+    ) -> list[dict[str, Any]]:
+        rval: list[dict[str, Any]] = []
         for file_source in self._file_sources:
             if not file_source.user_has_access(user_context):
                 continue
@@ -285,7 +282,7 @@ class ConfiguredFileSources:
             )
         return rval
 
-    def to_dict(self, for_serialization: bool = False, user_context: "OptionalUserContext" = None) -> Dict[str, Any]:
+    def to_dict(self, for_serialization: bool = False, user_context: "OptionalUserContext" = None) -> dict[str, Any]:
         return {
             "file_sources": self.plugins_to_dict(for_serialization=for_serialization, user_context=user_context),
             "config": self._file_sources_config.to_dict(),
@@ -315,23 +312,21 @@ class NullConfiguredFileSources(ConfiguredFileSources):
 
 class DictifiableFilesSourceContext(Protocol):
     @property
-    def role_names(self) -> Set[str]: ...
+    def role_names(self) -> set[str]: ...
 
     @property
-    def group_names(self) -> Set[str]: ...
+    def group_names(self) -> set[str]: ...
 
     @property
     def file_sources(self) -> ConfiguredFileSources: ...
 
-    def to_dict(
-        self, view: str = "collection", value_mapper: Optional[Dict[str, Callable]] = None
-    ) -> Dict[str, Any]: ...
+    def to_dict(self, view: str = "collection", value_mapper: dict[str, Callable] | None = None) -> dict[str, Any]: ...
 
 
 class FileSourceDictifiable(Dictifiable, DictifiableFilesSourceContext):
-    dict_collection_visible_keys = ("email", "username", "ftp_dir", "preferences", "is_admin")
+    dict_collection_visible_keys = ("email", "username", "ftp_dir", "preferences", "is_admin", "oidc_access_tokens")
 
-    def to_dict(self, view="collection", value_mapper: Optional[Dict[str, Callable]] = None) -> Dict[str, Any]:
+    def to_dict(self, view="collection", value_mapper: dict[str, Callable] | None = None) -> dict[str, Any]:
         rval = super().to_dict(view=view, value_mapper=value_mapper)
         rval["role_names"] = list(self.role_names)
         rval["group_names"] = list(self.group_names)
@@ -339,33 +334,38 @@ class FileSourceDictifiable(Dictifiable, DictifiableFilesSourceContext):
 
 
 class FileSourcesUserContext(DictifiableFilesSourceContext, Protocol):
+    @property
+    def email(self) -> str | None: ...
 
     @property
-    def email(self) -> Optional[str]: ...
+    def username(self) -> str | None: ...
 
     @property
-    def username(self) -> Optional[str]: ...
+    def ftp_dir(self) -> str | None: ...
 
     @property
-    def ftp_dir(self) -> Optional[str]: ...
-
-    @property
-    def preferences(self) -> Dict[str, Any]: ...
+    def preferences(self) -> dict[str, Any]: ...
 
     @property
     def is_admin(self) -> bool: ...
 
     @property
-    def user_vault(self) -> Dict[str, Any]: ...
+    def user_vault(self) -> dict[str, Any]: ...
 
     @property
-    def app_vault(self) -> Dict[str, Any]: ...
+    def app_vault(self) -> dict[str, Any]: ...
 
     @property
     def anonymous(self) -> bool: ...
 
+    @property
+    def oidc_access_tokens(self) -> dict[str, str] | None: ...
 
-OptionalUserContext = Optional[FileSourcesUserContext]
+    @property
+    def oidc_access_token_expirations(self) -> dict[str, datetime]: ...
+
+
+OptionalUserContext = FileSourcesUserContext | None
 
 
 class ProvidesFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiable):
@@ -375,12 +375,12 @@ class ProvidesFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiab
         self.trans = trans
 
     @property
-    def email(self) -> Optional[str]:
+    def email(self) -> str | None:
         user = self.trans.user
         return user and user.email
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
         user = self.trans.user
         return user and user.username
 
@@ -394,17 +394,16 @@ class ProvidesFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiab
         return user and user.extra_preferences or defaultdict(lambda: None)
 
     @property
-    def role_names(self) -> Set[str]:
+    def role_names(self) -> set[str]:
         """The set of role names of this user."""
-        user = self.trans.user
         role_names = set()
-        if user:
+        if user := self.trans.user:
             role_names = {ura.role.name for ura in user.roles}
             role_names.add(user.email)  # User's private role may have a generic name, so add user's email explicitly.
         return role_names
 
     @property
-    def group_names(self) -> Set[str]:
+    def group_names(self) -> set[str]:
         """The set of group names to which this user belongs."""
         user = self.trans.user
         return {ugr.group.name for ugr in user.groups} if user else set()
@@ -434,6 +433,35 @@ class ProvidesFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiab
     def anonymous(self) -> bool:
         return self.trans.anonymous
 
+    @property
+    def oidc_access_tokens(self) -> dict[str, str] | None:
+        """
+        Return all available access tokens for the current user.
+        """
+        user = self.trans.user
+        if not user:
+            return None
+        tokens = {}
+        for authnz_token in user.social_auth:
+            extra_data = authnz_token.extra_data or {}
+            access_token = extra_data.get("access_token")
+            if access_token:
+                tokens[authnz_token.provider] = access_token
+        return tokens
+
+    @property
+    def oidc_access_token_expirations(self) -> dict[str, datetime]:
+        from galaxy.tools.data_fetch_utils import compute_token_expiry_for_provider
+
+        user = self.trans.user
+        if not user or not user.social_auth:
+            return {}
+        return {
+            auth.provider: expiry
+            for auth in user.social_auth
+            if (expiry := compute_token_expiry_for_provider(user, auth.provider)) is not None
+        }
+
 
 class DictFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiable):
     def __init__(self, **kwd):
@@ -444,7 +472,7 @@ class DictFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiable):
         return self._kwd.get("email")
 
     @property
-    def username(self) -> Optional[str]:
+    def username(self) -> str | None:
         return self._kwd.get("username")
 
     @property
@@ -482,3 +510,11 @@ class DictFileSourcesUserContext(FileSourcesUserContext, FileSourceDictifiable):
     @property
     def anonymous(self) -> bool:
         return not bool(self._kwd.get("username"))
+
+    @property
+    def oidc_access_tokens(self) -> dict[str, str] | None:
+        return self._kwd.get("oidc_access_tokens")
+
+    @property
+    def oidc_access_token_expirations(self) -> dict[str, datetime]:
+        return self._kwd.get("oidc_access_token_expirations") or {}

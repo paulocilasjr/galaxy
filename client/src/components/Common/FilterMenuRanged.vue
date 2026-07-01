@@ -56,28 +56,28 @@ watch(
     () => localValueGt.value,
     (newFilter) => {
         emit("change", localNameGt.value, newFilter);
-    }
+    },
 );
 
 watch(
     () => localValueLt.value,
     (newFilter) => {
         emit("change", localNameLt.value, newFilter);
-    }
+    },
 );
 
 watch(
     () => valueGt.value,
     (newFilter) => {
         localValueGt.value = newFilter;
-    }
+    },
 );
 
 watch(
     () => valueLt.value,
     (newFilter) => {
         localValueLt.value = newFilter;
-    }
+    },
 );
 </script>
 
@@ -90,7 +90,7 @@ watch(
             <BFormInput
                 :id="`${props.identifier}-advanced-filter-${localNameGt}`"
                 v-model="localValueGt"
-                v-b-tooltip.focus.v-danger="hasError(localNameGt)"
+                v-g-tooltip.focus.v-danger="hasError(localNameGt)"
                 size="sm"
                 :state="hasError(localNameGt) ? false : null"
                 :placeholder="localPlaceholder('gt')"
@@ -107,7 +107,7 @@ watch(
             <BFormInput
                 :id="`${props.identifier}-advanced-filter-${localNameLt}`"
                 v-model="localValueLt"
-                v-b-tooltip.focus.v-danger="hasError(localNameLt)"
+                v-g-tooltip.focus.v-danger="hasError(localNameLt)"
                 size="sm"
                 :state="hasError(localNameLt) ? false : null"
                 :placeholder="localPlaceholder('lt')"

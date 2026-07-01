@@ -48,14 +48,23 @@ async function fetchMetrics() {
 watch(
     () => props.invocationId,
     () => fetchMetrics(),
-    { immediate: true }
+    { immediate: true },
 );
 
 function itemToX(item: components["schemas"]["WorkflowJobMetric"]) {
     if (groupBy.value === "tool_id") {
         return item.tool_id;
     } else if (groupBy.value === "step_id") {
-        return `${item.step_index + 1}: ${item.step_label || item.tool_id}`;
+        // Handle both int (top-level) and string (subworkflow) step indices
+        // API returns 0-based indices, display as 1-based
+        const stepDisplay =
+            typeof item.step_index === "number"
+                ? item.step_index + 1
+                : item.step_index
+                      .split(".")
+                      .map((part) => String(parseInt(part) + 1))
+                      .join(".");
+        return `${stepDisplay}: ${item.step_label || item.tool_id}`;
     } else {
         throw Error("Cannot happen");
     }
@@ -77,7 +86,7 @@ interface barChartData {
 
 interface JobInfo {
     toolId: string;
-    stepIndex: number;
+    stepIndex: number | string;
     stepLabel: string | null;
 }
 
@@ -86,14 +95,14 @@ interface DerivedMetric {
     job_id: string;
     raw_value: string;
     tool_id: string;
-    step_index: number;
+    step_index: number | string;
     step_label: string | null;
 }
 
 type AnyMetric = components["schemas"]["WorkflowJobMetric"] & DerivedMetric;
 
 function computeAllocatedCoreTime(
-    jobMetrics: components["schemas"]["WorkflowJobMetric"][] | undefined
+    jobMetrics: components["schemas"]["WorkflowJobMetric"][] | undefined,
 ): DerivedMetric[] {
     const walltimePerJob: Record<string, number> = {};
     const coresPerJob: Record<string, number> = {};
@@ -135,7 +144,7 @@ function metricToSpecData(
     metricName: string,
     yTitle: string,
     helpTerm?: string,
-    transform?: (param: number) => number
+    transform?: (param: number) => number,
 ): boxplotData {
     const thisMetric = jobMetrics?.filter((jobMetric) => jobMetric.name == metricName);
     const values = thisMetric?.map((item) => {
@@ -164,7 +173,7 @@ function metricToAggregateData(
     metricName: string,
     yTitle: string,
     helpTerm?: string,
-    transform?: (param: number) => number
+    transform?: (param: number) => number,
 ): barChartData {
     const thisMetric = jobMetrics?.filter((jobMetric) => jobMetric.name == metricName);
     const aggregateByX: Record<string, number> = {};
@@ -223,7 +232,7 @@ const wallclockAggregate: ComputedRef<barChartData> = computed(() => {
         "runtime_seconds",
         title,
         "galaxy.jobs.metrics.walltime",
-        transformTime
+        transformTime,
     );
 });
 
@@ -234,7 +243,7 @@ const allocatedCoreTimeSpec: ComputedRef<boxplotData> = computed(() => {
         "allocated_core_time",
         title,
         "galaxy.jobs.metrics.allocated_core_time",
-        transformTime
+        transformTime,
     );
 });
 
@@ -245,7 +254,7 @@ const allocatedCoreTimeAggregate: ComputedRef<barChartData> = computed(() => {
         "allocated_core_time",
         title,
         "galaxy.jobs.metrics.allocated_core_time",
-        transformTime
+        transformTime,
     );
 });
 
@@ -263,7 +272,7 @@ const peakMemory: ComputedRef<boxplotData> = computed(() => {
         "memory.peak",
         "Max memory usage recorded (in MB)",
         undefined,
-        (v) => v / 1024 ** 2
+        (v) => v / 1024 ** 2,
     );
 });
 

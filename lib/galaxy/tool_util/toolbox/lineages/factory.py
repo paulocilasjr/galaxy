@@ -1,21 +1,24 @@
 from typing import (
-    Dict,
-    Optional,
+    TYPE_CHECKING,
 )
 
 from galaxy.util.tool_version import remove_version_from_guid
 from .interface import ToolLineage
+
+if TYPE_CHECKING:
+    from galaxy.tools import Tool
 
 
 class LineageMap:
     """Map each unique tool id to a lineage object."""
 
     def __init__(self, app):
-        self.lineage_map: Dict[str, ToolLineage] = {}
+        self.lineage_map: dict[str, ToolLineage] = {}
         self.app = app
 
-    def register(self, tool) -> ToolLineage:
+    def register(self, tool: "Tool") -> ToolLineage:
         tool_id = tool.id
+        assert tool_id
         versionless_tool_id = remove_version_from_guid(tool_id)
         lineage: ToolLineage
         if versionless_tool_id not in self.lineage_map:
@@ -32,7 +35,7 @@ class LineageMap:
             self.lineage_map[tool_id] = lineage
         return self.lineage_map[tool_id]
 
-    def get(self, tool_id) -> Optional[ToolLineage]:
+    def get(self, tool_id: str) -> ToolLineage | None:
         """
         Get lineage for `tool_id`.
 
@@ -55,13 +58,14 @@ class LineageMap:
             tool = toolbox and toolbox._tools_by_id.get(tool_id)
             if tool:
                 lineage = ToolLineage.from_tool(tool)
-            if lineage:
                 self.lineage_map[tool_id] = lineage
         return self.lineage_map.get(tool_id)
 
-    def _get_versionless(self, tool_id) -> Optional[ToolLineage]:
+    def _get_versionless(self, tool_id: str) -> ToolLineage | None:
         versionless_tool_id = remove_version_from_guid(tool_id)
-        return self.lineage_map.get(versionless_tool_id, None)
+        if not versionless_tool_id:
+            return None
+        return self.lineage_map.get(versionless_tool_id)
 
 
 __all__ = ("LineageMap",)

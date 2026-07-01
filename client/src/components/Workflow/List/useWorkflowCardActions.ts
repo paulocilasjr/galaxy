@@ -18,7 +18,7 @@ import { computed, type Ref } from "vue";
 import type { WorkflowSummary } from "@/api/workflows";
 import { undeleteWorkflow } from "@/api/workflows";
 import { getFullAppUrl } from "@/app/utils";
-import type { CardAttributes } from "@/components/Common/GCard.types";
+import type { CardAction } from "@/components/Common/GCard.types";
 import {
     copyWorkflow as copyWorkflowService,
     deleteWorkflow as deleteWorkflowService,
@@ -36,7 +36,7 @@ export function useWorkflowCardActions(
     editorView: boolean,
     refreshCallback: () => void,
     insertSteps: () => void,
-    insert: () => void
+    insert: () => void,
 ) {
     const userStore = useUserStore();
     const { isAnonymous } = storeToRefs(userStore);
@@ -122,8 +122,9 @@ export function useWorkflowCardActions(
     async function deleteWorkflow() {
         const confirmed = await confirm("Are you sure you want to delete this workflow?", {
             title: "Delete workflow",
-            okTitle: "Delete",
-            okVariant: "danger",
+            okText: "Delete",
+            okIcon: faTrash,
+            okColor: "red",
         });
 
         if (confirmed) {
@@ -134,7 +135,11 @@ export function useWorkflowCardActions(
     }
 
     async function onRestore() {
-        const confirmed = await confirm("Are you sure you want to restore this workflow?", "Restore workflow");
+        const confirmed = await confirm("Are you sure you want to restore this workflow?", {
+            title: "Restore workflow",
+            okText: "Restore",
+            okIcon: faTrashRestore,
+        });
 
         if (confirmed) {
             await undeleteWorkflow(workflow.value.id);
@@ -150,7 +155,11 @@ export function useWorkflowCardActions(
     }
 
     async function copyWorkflow() {
-        const confirmed = await confirm("Are you sure you want to make a copy of this workflow?", "Copy workflow");
+        const confirmed = await confirm("Are you sure you want to make a copy of this workflow?", {
+            title: "Copy workflow",
+            okText: "Copy",
+            okIcon: faCopy,
+        });
 
         if (confirmed) {
             await copyWorkflowService(workflow.value.id, workflow.value.owner);
@@ -164,17 +173,16 @@ export function useWorkflowCardActions(
         toast.success("Workflow imported successfully");
     }
 
-    const _workflowRunAction: CardAttributes = {
+    const _workflowRunAction: CardAction = {
         id: "workflow-run",
         label: editorView ? "Run" : "",
         icon: faPlay,
         title: runButtonTitle.value,
         disabled: isAnonymous.value || workflow.value.deleted,
         to: `/workflows/run?id=${workflow.value.id}`,
-        visible: true,
     };
 
-    const _workflowCommonActions: CardAttributes[] = [
+    const _workflowCommonActions: CardAction[] = [
         {
             id: "workflow-link",
             label: "Link to Workflow",
@@ -209,7 +217,7 @@ export function useWorkflowCardActions(
         },
     ];
 
-    const workflowCardExtraActions: CardAttributes[] = [
+    const workflowCardExtraActions: CardAction[] = [
         {
             id: "workflow-delete",
             label: "Delete",
@@ -246,7 +254,7 @@ export function useWorkflowCardActions(
         },
     ];
 
-    const workflowCardSecondaryActions: CardAttributes[] = [
+    const workflowCardSecondaryActions: CardAction[] = [
         {
             id: "workflow-restore",
             label: "Restore",
@@ -275,7 +283,7 @@ export function useWorkflowCardActions(
         },
     ];
 
-    const workflowCardPrimaryActions: CardAttributes[] = [
+    const workflowCardPrimaryActions: CardAction[] = [
         {
             id: "workflow-edit",
             label: "Edit",
@@ -315,5 +323,6 @@ export function useWorkflowCardActions(
         workflowCardSecondaryActions,
         workflowCardPrimaryActions,
         toggleBookmark,
+        deleteWorkflow,
     };
 }

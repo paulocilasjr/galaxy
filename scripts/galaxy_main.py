@@ -17,6 +17,7 @@ defaults logging to a single file with the following:
 galaxy-main -d --server-name handler0 --daemon-log-file=handler0-daemon.log --pid-file handler0.pid --log-file handler0.log
 
 """
+
 import functools
 import logging
 import os
@@ -225,6 +226,13 @@ def main(func=app_loop):
     args = arg_parser.parse_args()
     if args.ini_path and not args.config_file:
         args.config_file = args.ini_path
+    if (config_file_env := os.environ.get("GALAXY_CONFIG_FILE")) and os.path.abspath(
+        config_file_env
+    ) != os.path.abspath(args.config_file):
+        sys.exit(
+            "Error: GALAXY_CONFIG_FILE environment variable is set to a different config file than the one specified on the command line."
+        )
+    os.environ["GALAXY_CONFIG_FILE"] = os.path.abspath(args.config_file)
     if args.log_file:
         os.environ["GALAXY_CONFIG_LOG_DESTINATION"] = os.path.abspath(args.log_file)
     if args.server_name:

@@ -2,6 +2,7 @@
  * The Uri types here are based on `DataOrCollectionRequest` defined in
  * `lib/galaxy/tool_util_models/parameters.py`.
  */
+import type { FieldDict, SampleSheetColumnDefinition } from "@/api";
 
 interface DatasetHash {
     hash_function: "MD5" | "SHA-1" | "SHA-256" | "SHA-512";
@@ -73,7 +74,7 @@ export function isDataUri(item: object): item is DataUri {
 }
 
 export function isDataUriCollectionElementCollection(
-    item: DataUriCollectionElement
+    item: DataUriCollectionElement,
 ): item is DataUriCollectionElementCollection {
     return item.class === "Collection";
 }
@@ -88,6 +89,7 @@ export type DataOption = {
     name: string;
     src: string;
     tags: Array<string>;
+    column_definitions?: SampleSheetColumnDefinition[] | null;
 };
 
 export function isDataOption(item: object): item is DataOption {
@@ -101,3 +103,8 @@ export function itemUniqueKey(item: DataOption): string {
 export function containsDataOption(items: DataOption[], item: DataOption | null): boolean {
     return item !== null && items.some((i) => itemUniqueKey(i) === itemUniqueKey(item));
 }
+
+export type ExtendedCollectionType = {
+    columnDefinitions?: SampleSheetColumnDefinition[] | undefined;
+    fields?: FieldDict[] | undefined;
+};

@@ -6,7 +6,7 @@
         <b-card-header>
             <span class="float-right">
                 <b-button
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     :href="downloadUrl"
                     variant="link"
                     size="sm"
@@ -18,7 +18,7 @@
                 </b-button>
                 <b-button
                     v-if="currentUser && currentHistoryId"
-                    v-b-tooltip.hover
+                    v-g-tooltip.hover
                     href="#"
                     role="button"
                     variant="link"
@@ -106,7 +106,7 @@ const getContent = async () => {
 watch(
     () => props.collectionId,
     () => getContent(),
-    { immediate: true }
+    { immediate: true },
 );
 </script>
 

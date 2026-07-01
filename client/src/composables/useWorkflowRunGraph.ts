@@ -53,7 +53,7 @@ export function useWorkflowRunGraph(
     workflowVersion: number | undefined,
     inputs: Ref<Record<string, DataInput | null>>,
     formInputs: Ref<any[]>,
-    stepValidation: Ref<[string, string] | undefined>
+    stepValidation: Ref<[string, string] | undefined>,
 ) {
     /** The workflow that is to be run */
     const loadedWorkflow = ref<any>(null);
@@ -130,7 +130,7 @@ export function useWorkflowRunGraph(
             if (dataInput && typeof dataInput === "object" && isDataUri(dataInput)) {
                 return getStepDescription(
                     dataInput.name || (isDataUriCollection(dataInput) ? "Collection provided" : "File provided"),
-                    true
+                    true,
                 );
             } else {
                 dataInput = dataInput as DataToolParameterInput | DataCollectionToolParameterInput;
@@ -184,11 +184,11 @@ export function useWorkflowRunGraph(
         text: string | boolean,
         populated: boolean,
         optional?: boolean,
-        spin?: boolean
+        spin?: boolean,
     ): WorkflowRunStepInfo {
         // color variant for `paused` state works best for unpopulated inputs,
         // "" for optional inputs and `ok` for populated inputs
-        const headerClass = optional ? "" : !spin && populated ? "ok" : "paused";
+        const headerClass = optional ? undefined : !spin && populated ? "ok" : "paused";
         const headerIcon = spin ? faSpinner : populated ? faCheckCircle : faExclamationCircle;
 
         text = typeof text === "boolean" ? text : !optional ? text : `${text} (optional)`;

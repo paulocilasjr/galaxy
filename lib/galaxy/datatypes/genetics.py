@@ -17,11 +17,7 @@ import os
 import re
 import sys
 from typing import (
-    Dict,
     IO,
-    List,
-    Optional,
-    Union,
 )
 from urllib.parse import quote_plus
 
@@ -86,13 +82,13 @@ class GenomeGraphs(Tabular):
         t[0] = "string"
         dataset.metadata.column_types = t
 
-    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> Union[FileObjType, str]:
+    def as_ucsc_display_file(self, dataset: DatasetProtocol, **kwd) -> FileObjType | str:
         """
         Returns file
         """
         return open(dataset.get_file_name(), "rb")
 
-    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> List:
+    def ucsc_links(self, dataset: DatasetProtocol, type: str, app, base_url: str) -> list:
         """
         from the ever-helpful angie hinrichs angie@soe.ucsc.edu
         a genome graphs call looks like this
@@ -311,7 +307,7 @@ class Rgenetics(Html):
                 opt_text = " (optional)"
             if composite_file.get("description"):
                 rval.append(
-                    f"<li><a href=\"{fn}\" type=\"application/binary\">{fn} ({composite_file.get('description')})</a>{opt_text}</li>"
+                    f'<li><a href="{fn}" type="application/binary">{fn} ({composite_file.get("description")})</a>{opt_text}</li>'
                 )
             else:
                 rval.append(f'<li><a href="{fn}" type="application/binary">{fn}</a>{opt_text}</li>')
@@ -386,16 +382,6 @@ class SNPMatrix(Rgenetics):
         else:
             dataset.peek = "file does not exist"
             dataset.blurb = "file purged from disk"
-
-    def sniff(self, filename: str) -> bool:
-        """need to check the file header hex code"""
-        with open(filename, "b") as infile:
-            head = infile.read(16)
-        head = [hex(x) for x in head]
-        if head != "":
-            return False
-        else:
-            return True
 
 
 class Lped(Rgenetics):
@@ -663,7 +649,7 @@ class RexpBase(Html):
         """Returns the mime type of the datatype"""
         return "text/html"
 
-    def get_phecols(self, phenolist: List, maxConc: int = 20) -> List:
+    def get_phecols(self, phenolist: list, maxConc: int = 20) -> list:
         """
         sept 2009: cannot use whitespace to split - make a more complex structure here
         and adjust the methods that rely on this structure
@@ -684,7 +670,7 @@ class RexpBase(Html):
             if nrows == 0:  # set up from header
                 head = row
                 totcols = len(row)
-                concordance: List[Dict] = [{} for x in head]
+                concordance: list[dict] = [{} for x in head]
             else:
                 for col, code in enumerate(row):  # keep column order correct
                     if col >= totcols:
@@ -831,7 +817,7 @@ class RexpBase(Html):
             f.write("\n".join(rval))
             f.write("\n")
 
-    def init_meta(self, dataset: HasMetadata, copy_from: Optional[HasMetadata] = None) -> None:
+    def init_meta(self, dataset: HasMetadata, copy_from: HasMetadata | None = None) -> None:
         if copy_from:
             dataset.metadata = copy_from.metadata
 

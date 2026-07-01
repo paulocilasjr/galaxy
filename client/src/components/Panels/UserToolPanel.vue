@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { library } from "@fortawesome/fontawesome-svg-core";
-import { faEye } from "@fortawesome/free-regular-svg-icons";
-import { faArrowDown, faInfoCircle, faPlus, faWrench } from "@fortawesome/free-solid-svg-icons";
+import { faEdit, faPlus, faWrench } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { faCancel } from "font-awesome-6";
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router/composables";
@@ -11,9 +10,11 @@ import type { UnprivilegedToolResponse } from "@/api";
 import { useUnprivilegedToolStore } from "@/stores/unprivilegedToolStore";
 
 import ActivityPanel from "./ActivityPanel.vue";
+import GButton from "@/components/BaseComponents/GButton.vue";
+import GButtonGroup from "@/components/BaseComponents/GButtonGroup.vue";
+import GCard from "@/components/Common/GCard.vue";
 import Heading from "@/components/Common/Heading.vue";
 import ScrollList from "@/components/ScrollList/ScrollList.vue";
-import UtcDate from "@/components/UtcDate.vue";
 
 interface Props {
     inPanel?: boolean;
@@ -28,8 +29,6 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits(["unprivileged-tool-clicked", "onInsertTool", "onEditTool", "onCreateTool"]);
-
-library.add(faEye, faArrowDown, faInfoCircle, faPlus);
 
 const unprivilegedToolStore = useUnprivilegedToolStore();
 const { unprivilegedTools, canUseUnprivilegedTools } = storeToRefs(unprivilegedToolStore);
@@ -51,12 +50,21 @@ const currentItemId = computed(() => {
     return match ? match[0] : undefined;
 });
 
+function repField(tool: UnprivilegedToolResponse, key: string): string | undefined {
+    // representation may be a typed UserToolSource (status ok/lifted) or a raw
+    // dict (status invalid). Both shapes still hold name/id/etc by string key,
+    // but the union type loses property access — read defensively.
+    const rep = tool.representation as Record<string, unknown> | undefined;
+    const value = rep?.[key];
+    return typeof value === "string" ? value : undefined;
+}
+
 function cardClicked(tool: UnprivilegedToolResponse) {
     if (props.inPanel) {
         emit("unprivileged-tool-clicked", tool);
     }
     if (props.inWorkflowEditor) {
-        emit("onInsertTool", tool.representation.id, tool.representation.name, tool.uuid);
+        emit("onInsertTool", repField(tool, "id"), repField(tool, "name"), tool.uuid);
     } else {
         router.push(`/?tool_uuid=${tool.uuid}`);
     }
@@ -77,78 +85,103 @@ function newTool() {
     }
     router.push(route);
 }
+
+function getToolBadges(tool: UnprivilegedToolResponse) {
+    const badges = [
+        {
+            id: "version",
+            label: repField(tool, "version") ?? "",
+            title: "Version of this custom tool",
+        },
+    ];
+    if (tool.representation_status === "lifted") {
+        badges.push({
+            id: "status",
+            label: "needs update",
+            title:
+                "This tool's stored definition uses conventions that are no longer valid; " +
+                "they are ignored on read. Re-save the tool to clean it up.",
+        });
+    } else if (tool.representation_status === "invalid") {
+        badges.push({
+            id: "status",
+            label: "schema error",
+            title:
+                "This tool's stored definition does not satisfy the current schema. " +
+                "Open it in the editor to repair.",
+        });
+    }
+    return badges;
+}
+
+function getToolSecondaryActions(tool: UnprivilegedToolResponse) {
+    return [
+        {
+            id: "deactivate",
+            label: "Deactivate",
+            icon: faCancel,
+            title: "Deactivate this custom tool",
+            handler: () => {
+                unprivilegedToolStore.deactivateTool(tool.uuid);
+            },
+        },
+        {
+            id: "edit",
+            label: "Edit",
+            icon: faEdit,
+            title: "Edit this custom tool",
+            handler: () => editTool(tool.uuid),
+        },
+    ];
+}
 </script>
 
 <template>
     <ActivityPanel v-if="canUseUnprivilegedTools" title="Custom Tools">
         <template v-slot:header-buttons>
-            <BButtonGroup>
-                <BButton
-                    v-b-tooltip.bottom.hover
+            <GButtonGroup>
+                <GButton
                     data-description="create new custom tool"
-                    size="sm"
-                    variant="link"
+                    size="small"
+                    tooltip
                     title="Create a new custom tool"
+                    transparent
                     @click="newTool">
                     <FontAwesomeIcon :icon="faPlus" fixed-width />
-                </BButton>
-            </BButtonGroup>
+                </GButton>
+            </GButtonGroup>
         </template>
         <!-- key ScrollList on length of unprivilegedTools so that we rerender if the tools in the store change-->
         <ScrollList
             :key="unprivilegedTools?.length"
             :loader="loadUnprivilegedTools"
             :item-key="(tool) => tool.uuid"
-            :in-panel="inPanel">
-            <template v-slot:header>
-                <p>Loading...</p>
-            </template>
+            :in-panel="inPanel"
+            name="custom tool"
+            name-plural="custom tools">
             <template v-slot:item="{ item: tool }">
-                <BListGroupItem
+                <GCard
+                    :id="`custom-tool-${tool.uuid}`"
+                    clickable
                     button
-                    class="d-flex"
-                    :class="{
-                        current: tool.uuid === currentItemId,
-                        'panel-item': props.inPanel,
-                    }"
-                    :active="tool.uuid === currentItemId">
-                    <div class="overflow-auto w-100" @click="() => cardClicked(tool)">
-                        <Heading bold size="text" :icon="faWrench">
-                            <div style="flex-direction: column">
-                                <span class="truncate-n-lines three-lines">
-                                    {{ tool.representation.name }}
-                                </span>
-                                <small class="text-muted truncate-n-lines two-lines">
-                                    {{ tool.representation.description }}
-                                </small>
-                            </div>
+                    :current="tool.uuid === currentItemId"
+                    :active="tool.uuid === currentItemId"
+                    :badges="getToolBadges(tool)"
+                    :secondary-actions="getToolSecondaryActions(tool)"
+                    :title="repField(tool, 'name') ?? tool.uuid"
+                    :title-icon="{ icon: faWrench }"
+                    title-size="text"
+                    :update-time="tool.create_time"
+                    @title-click="cardClicked(tool)"
+                    @click="() => cardClicked(tool)">
+                    <template v-slot:description>
+                        <Heading class="m-0" size="text">
+                            <small class="text-muted truncate-n-lines two-lines">
+                                {{ repField(tool, "description") }}
+                            </small>
                         </Heading>
-                        <div class="d-flex justify-content-between">
-                            <BBadge v-b-tooltip.noninteractive.hover pill>
-                                <UtcDate :date="tool.create_time" mode="elapsed" />
-                            </BBadge>
-                            <BBadge v-b-tooltip.noninteractive.hover pill>
-                                {{ tool.representation.version }}
-                            </BBadge>
-                            <BBadge @click.stop="() => editTool(tool.uuid)">
-                                <FontAwesomeIcon icon="fa-edit" />
-                                <span v-localize>Edit</span>
-                            </BBadge>
-                        </div>
-                    </div>
-
-                    <div v-if="props.inPanel" class="position-absolute mr-3" style="right: 0">
-                        <FontAwesomeIcon v-if="tool.id === currentItemId" :icon="faEye" size="lg" />
-                    </div>
-                </BListGroupItem>
-            </template>
-
-            <template v-slot:loading>
-                <p>Loading...</p>
-            </template>
-
-            <template v-slot:footer>
-                <p>All items loaded</p>
+                    </template>
+                </GCard>
             </template>
         </ScrollList>
     </ActivityPanel>

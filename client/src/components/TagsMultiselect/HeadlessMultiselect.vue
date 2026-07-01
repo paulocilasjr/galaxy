@@ -6,18 +6,15 @@
  * not a fully featured Multiselect alternative
  */
 
-import { library } from "@fortawesome/fontawesome-svg-core";
 import { faCheck, faChevronUp, faPlus, faTags, faTimes } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
-import { useElementBounding, whenever } from "@vueuse/core";
+import { onClickOutside, useElementBounding, whenever } from "@vueuse/core";
 import { computed, nextTick, ref, watch } from "vue";
 // @ts-ignore missing types
 import Vue2Teleport from "vue2-teleport";
 
 import { useUid } from "@/composables/utils/uid";
 import { normalizeTag } from "@/stores/userTagsStore";
-
-library.add(faCheck, faChevronUp, faPlus, faTags, faTimes);
 
 const props = withDefaults(
     defineProps<{
@@ -34,7 +31,7 @@ const props = withDefaults(
         placeholder: "type to search",
         id: () => useUid("headless-multiselect-").value,
         validator: () => () => true,
-    }
+    },
 );
 
 const emit = defineEmits<{
@@ -112,7 +109,7 @@ watch(
     () => trimmedSearchValue.value,
     () => {
         highlightedOption.value = 0;
-    }
+    },
 );
 
 function onOptionHover(index: number) {
@@ -263,18 +260,44 @@ watch(
     async () => {
         await nextTick();
         bounds.update();
-    }
+    },
 );
+
+function getPopupLayerId() {
+    if (root.value) {
+        const closestDialog = root.value.closest("dialog");
+        return closestDialog?.id ?? "app";
+    } else {
+        return "app";
+    }
+}
 
 whenever(isOpen, async () => {
     await nextTick();
     bounds.update();
 });
+
+/**
+ * Closes the dropdown when clicking outside.
+ * This is needed for Safari, which doesn't always fire focusout
+ * when clicking on non-focusable elements.
+ * The `ignore` option excludes the teleported options popup.
+ */
+onClickOutside(
+    root,
+    () => {
+        if (isOpen.value) {
+            close(false);
+        }
+    },
+    { ignore: [`#${props.id}-options`], detectIframe: true },
+);
 </script>
 
 <template>
-    <div ref="root" class="headless-multiselect" @mousedown="onMouseDownInside" @focusout="onFocusOut">
-        <fieldset v-if="isOpen" @focusout="onFocusOut">
+    <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions  -->
+    <div ref="root" class="headless-multiselect" @focusout="onFocusOut">
+        <fieldset v-if="isOpen">
             <input
                 :id="`${props.id}-input`"
                 ref="inputField"
@@ -299,17 +322,18 @@ whenever(isOpen, async () => {
                 title="close"
                 @click="close(true)"
                 @keydown.tab="onCloseButtonTab">
-                <FontAwesomeIcon icon="fa-chevron-up" />
+                <FontAwesomeIcon :icon="faChevronUp" />
             </button>
         </fieldset>
-        <button v-else ref="openButton" class="toggle-button" @click="open">
+        <button v-else ref="openButton" class="toggle-button" @mousedown="onMouseDownInside" @click="open">
             {{ props.placeholder }}
-            <FontAwesomeIcon icon="fa-tags" />
+            <FontAwesomeIcon :icon="faTags" />
         </button>
 
-        <Vue2Teleport v-if="isOpen" to="#app">
+        <Vue2Teleport v-if="isOpen" :to="`#${getPopupLayerId()}`">
             <div
                 :id="`${props.id}-options`"
+                tabindex="-1"
                 aria-expanded="true"
                 role="listbox"
                 class="headless-multiselect__options"
@@ -321,6 +345,7 @@ whenever(isOpen, async () => {
                 }"
                 :data-parent-id="id"
                 @keydown.up.down.prevent
+                @mousedown="onMouseDownInside"
                 @focusout="onFocusOut">
                 <button
                     v-for="(option, i) in trimmedOptions"
@@ -334,6 +359,7 @@ whenever(isOpen, async () => {
                         invalid: i === 0 && !searchValueValid,
                         highlighted: highlightedOption === i,
                     }"
+                    @mousedown.prevent.stop
                     @click="() => onOptionSelected(option)"
                     @keydown="(e) => onOptionKey(e, i)"
                     @mouseover="() => onOptionHover(i)"
@@ -347,14 +373,14 @@ whenever(isOpen, async () => {
                         <template v-if="highlightedOption === i">
                             <FontAwesomeIcon
                                 class="headless-multiselect__needs-highlight"
-                                icon="fa-times"
+                                :icon="faTimes"
                                 fixed-width />
                             <span class="sr-only">remove tag</span>
                         </template>
-                        <FontAwesomeIcon v-else icon="fa-check" fixed-width />
+                        <FontAwesomeIcon v-else :icon="faCheck" fixed-width />
                     </span>
                     <span v-else class="headless-multiselect__info">
-                        <FontAwesomeIcon class="headless-multiselect__needs-highlight" icon="fa-plus" fixed-width />
+                        <FontAwesomeIcon class="headless-multiselect__needs-highlight" :icon="faPlus" fixed-width />
                         <span class="sr-only">add tag</span>
                     </span>
                 </button>
@@ -364,7 +390,7 @@ whenever(isOpen, async () => {
 </template>
 
 <style scoped lang="scss">
-@import "scss/theme/blue.scss";
+@import "@/style/scss/theme/blue.scss";
 
 .headless-multiselect {
     fieldset {
@@ -405,6 +431,7 @@ whenever(isOpen, async () => {
         background: none;
         cursor: text;
         text-align: left;
+        white-space: nowrap;
         margin: 0;
         border: none;
         width: 100%;
@@ -426,7 +453,9 @@ whenever(isOpen, async () => {
 
     display: flex;
     flex-direction: column;
-    box-shadow: 0 0 6px 0 rgba(3, 0, 34, 0.048), 0 0 4px 0 rgba(3, 0, 34, 0.185);
+    box-shadow:
+        0 0 6px 0 rgba(3, 0, 34, 0.048),
+        0 0 4px 0 rgba(3, 0, 34, 0.185);
     border-bottom-left-radius: 4px;
     border-bottom-right-radius: 4px;
 

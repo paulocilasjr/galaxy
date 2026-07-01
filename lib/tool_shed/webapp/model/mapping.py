@@ -6,9 +6,6 @@ are encapsulated here.
 import logging
 from typing import (
     Any,
-    Dict,
-    Optional,
-    Type,
     TYPE_CHECKING,
 )
 
@@ -28,15 +25,13 @@ metadata = mapper_registry.metadata
 
 
 class ToolShedModelMapping(SharedModelMapping):
-    User: Type["ToolShedUser"]
+    User: type["ToolShedUser"]
     security_agent: CommunityRBACAgent
     shed_counter: shed_statistics.ShedCounter
     create_tables: bool
 
 
-def init(
-    url: str, engine_options: Optional[Dict[str, Any]] = None, create_tables: bool = False
-) -> ToolShedModelMapping:
+def init(url: str, engine_options: dict[str, Any] | None = None, create_tables: bool = False) -> ToolShedModelMapping:
     """Connect mappings to the database"""
     engine_options = engine_options or {}
     # Create the database engine
