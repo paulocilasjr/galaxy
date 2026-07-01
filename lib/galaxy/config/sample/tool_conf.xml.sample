@@ -189,8 +189,19 @@
     <tool file="ludwig/ludwig_train.xml" />
     <tool file="ludwig/ludwig_visualize.xml" />
   </section>
+
   <section id="tiling" name="Tiling images">
-    <tool file="tiling/tiling_pyhist.xml" />
+    <tool file="tools-dp/tools/image_tiler/image_tiler.xml" />
+  </section>
+   <section id="embedding_extractor" name="Embedding Extractor">
+    <tool file="tools-dp/tools/embedding_extractor/embedding_extractor.xml" />
+  </section>
+    <section id="mil_bag" name="MIL Bag Creator">
+    <tool file="tools-dp/tools/mil_bag/mil_bag.xml" />
+  </section>
+
+  <section id="multimodal_learner" name="Multimodal Learner">
+    <tool file="gleam/tools/multimodallearner/multimodal_learner.xml" />
   </section>
   <section id="multimodal_learner" name="Multimodal Learner">
     <tool file="gleam/tools/multimodallearner/multimodal_learner.xml" />

@@ -13,12 +13,16 @@
             --input_csv_test '$input_csv_test'
             --target_column '$target_column'
             --output_csv '$model_metrics'
+            #if $threshold not in (None, '')
+            --threshold '$threshold'
+            #end if
     ]]></command>
     <inputs>
         <param name="input_csv_train" type="data" format="csv" label="Input Train CSV File"/>
         <param name="input_csv_test" type="data" format="csv" label="Input Test CSV File" />
         <param name="raw_data" type="data" format="zip" label="Zip File with Images"/>
         <param name="target_column" multiple="false" type="data_column" use_header_names="true" data_ref="input_csv_train" label="Does your uploaded data include a target column? If so, please select the target column:" />
+        <param name="threshold" type="float" optional="true" min="0.0" max="1.0" label="Decision Threshold (binary only)" help="If set, use this probability cutoff (0–1) for converting probabilities to labels on all splits. Default is 0.5." />
     </inputs>
     <outputs>
         <data name="model_metrics" format="csv" label="model_metrics.csv"/>
